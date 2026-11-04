@@ -1,19 +1,21 @@
 pluginManagement {
     includeBuild("remote-build-logic")
     repositories {
-        maven("https://nexus.gtnewhorizons.com/repository/public/") {
-            mavenContent {
-                includeGroupByRegex("com\\.gtnewhorizons(\\..+)?")
-            }
-        }
         mavenCentral()
         gradlePluginPortal()
+        maven("https://nexus.gtnewhorizons.com/repository/public/") {
+            content {
+                includeGroupByRegex("com\\.gtnewhorizons(\\..*)?")
+            }
+        }
     }
 }
 
 plugins {
     id("settings-setup")
 }
+
+rootProject.name = "Gui3dEngine"
 
 dependencyResolutionManagement {
     versionCatalogs {

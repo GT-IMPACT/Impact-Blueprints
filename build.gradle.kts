@@ -4,21 +4,28 @@ plugins {
 }
 
 impactMod {
-    modId.set("modid")
-    modName.set("Mod Name")
-    modGroup.set("space.impact.modid")
+    modId.set("gui3dengine")
+    modName.set("GUI 3D Engine")
+    modGroup.set("space.impact.gui3dengine")
     mavenGroup.set("space.impact")
     mavenUrl.set("https://maven.accident.space/repository/maven-releases/")
-    injectGenerics.set(true)
 }
 
+val modId = impactMod.modId.get()
+val modName = impactMod.modName.get()
+val modGroup = impactMod.modGroup.get()
+
 buildConfig {
-    useJavaOutput()
-    packageName(impactMod.modGroup.get())
-    buildConfigField("String", "MODID", "\"${impactMod.modId.get()}\"")
-    buildConfigField("String", "MODNAME", "\"${impactMod.modName.get()}\"")
+    packageName("space.impact.$modId")
+    buildConfigField("String", "MODID", "\"${modId}\"")
+    buildConfigField("String", "MODNAME", "\"${modName}\"")
     buildConfigField("String", "VERSION", "\"${project.version}\"")
-    buildConfigField("String", "GROUPNAME", "\"${impactMod.modGroup.get()}\"")
+    buildConfigField("String", "GROUPNAME", "\"${modGroup}\"")
+    buildConfigField("boolean", "IS_DEBUG", "${System.getenv("IMPACT_DEBUG") != null}")
+    useKotlinOutput {
+        topLevelConstants = true
+        internalVisibility = false
+    }
 }
 
 dependencies {

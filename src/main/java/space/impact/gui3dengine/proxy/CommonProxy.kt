@@ -1,4 +1,4 @@
-package space.impact.modid.proxy
+package space.impact.gui3dengine.proxy
 
 import cpw.mods.fml.common.event.FMLInitializationEvent
 import cpw.mods.fml.common.event.FMLPostInitializationEvent

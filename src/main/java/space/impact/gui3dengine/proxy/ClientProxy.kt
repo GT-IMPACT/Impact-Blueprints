@@ -1,5 +1,5 @@
 @file:Suppress("unused")
 
-package space.impact.modid.proxy
+package space.impact.gui3dengine.proxy
 
 class ClientProxy : CommonProxy()
