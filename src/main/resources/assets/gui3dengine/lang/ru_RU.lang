@@ -1,0 +1,15 @@
+gui3dengine.title=Структура
+gui3dengine.all=Все
+gui3dengine.cut=Срез
+gui3dengine.home=Сброс
+gui3dengine.materials=Блоки сцены
+gui3dengine.controls=ЛКМ: поворот/выбор; ПКМ: сдвиг; колесо: масштаб
+gui3dengine.error=Ошибка сцены. См. журнал игры.
+gui3dengine.open_viewer=Нажми, чтобы открыть
+gui3dengine.requires_modularui=Для просмотра нужен ModularUI2
+gui3dengine.required_air=Обязательное пустое пространство
+gui3dengine.unresolved=Неразрешённая позиция структуры
+gui3dengine.structure_incomplete=Структура неполная: см. подробности
+gui3dengine.structure_unverified=Контроллер не поддерживает survival-конструктор; требования не проверены
+gui3dengine.channel=Канал
+gui3dengine.alternatives=Варианты для строительства:

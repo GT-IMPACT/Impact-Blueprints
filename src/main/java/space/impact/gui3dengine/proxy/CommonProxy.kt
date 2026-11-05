@@ -1,5 +1,6 @@
 package space.impact.gui3dengine.proxy
 
+import cpw.mods.fml.common.event.FMLLoadCompleteEvent
 import cpw.mods.fml.common.event.FMLInitializationEvent
 import cpw.mods.fml.common.event.FMLPostInitializationEvent
 import cpw.mods.fml.common.event.FMLPreInitializationEvent
@@ -18,6 +19,9 @@ open class CommonProxy {
     open fun preInit(event: FMLPreInitializationEvent) = Unit
 
     open fun postInit(event: FMLPostInitializationEvent) = Unit
+
+    public open fun loadComplete(event: FMLLoadCompleteEvent) {
+    }
 
     // server only
 

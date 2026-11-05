@@ -4,6 +4,7 @@ package space.impact.gui3dengine
 
 import cpw.mods.fml.common.FMLCommonHandler
 import cpw.mods.fml.common.Mod
+import cpw.mods.fml.common.event.FMLLoadCompleteEvent
 import cpw.mods.fml.common.event.FMLInitializationEvent
 import cpw.mods.fml.common.event.FMLPostInitializationEvent
 import cpw.mods.fml.common.event.FMLPreInitializationEvent
@@ -44,6 +45,11 @@ object Gui3DEngineMod {
     @Mod.EventHandler
     fun postInit(event: FMLPostInitializationEvent) {
         proxy.postInit(event)
+    }
+
+    @Mod.EventHandler
+    public fun loadComplete(event: FMLLoadCompleteEvent) {
+        proxy.loadComplete(event)
     }
 
     @Mod.EventHandler
