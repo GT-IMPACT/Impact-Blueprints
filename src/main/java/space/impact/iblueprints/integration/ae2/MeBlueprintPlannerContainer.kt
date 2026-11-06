@@ -78,7 +78,6 @@ internal class MeBlueprintPlannerContainer(
             hint = PlannerSlotHint.BLUEPRINT,
             x = 128,
             y = 49,
-            output = true,
         )
         addPlannerSlot(
             hint = PlannerSlotHint.BLANK_PATTERN,

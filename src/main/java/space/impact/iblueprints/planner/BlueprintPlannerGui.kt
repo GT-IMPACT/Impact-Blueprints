@@ -67,6 +67,7 @@ internal object BlueprintPlannerGui {
                 x = 32,
                 y = 81,
                 client = client,
+                accepts = PlannerState::acceptsRecordedBlueprint,
             ),
         )
         if (client) {

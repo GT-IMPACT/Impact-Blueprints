@@ -1711,7 +1711,41 @@ internal object GregTechSceneChecks {
             null,
             imported.inventory.getStackInSlot(PlannerState.BLUEPRINT_INPUT),
         )
-        assertFalse(imported.saveBlueprint())
+        assertTrue(imported.saveBlueprint())
+        val blanks = ItemStack(
+            BlankBlueprintItem,
+            16,
+        )
+        imported.inventory.setStackInSlot(
+            PlannerState.BLUEPRINT_INPUT,
+            blanks,
+        )
+        imported.reset(imported.selection)
+        assertTrue(imported.hasBlueprintInput())
+        assertTrue(imported.loadBlueprint())
+        assertEquals(
+            original,
+            imported.plan,
+        )
+        assertTrue(imported.edit(
+            expectedSelection = imported.selection,
+            snapshot = plan,
+        ))
+        assertTrue(imported.saveBlueprint())
+        assertEquals(
+            16,
+            blanks.stackSize,
+        )
+        assertTrue(blanks === imported.inventory.getStackInSlot(PlannerState.BLUEPRINT_INPUT))
+        val updatedBlueprint = requireNotNull(imported.inventory.getStackInSlot(PlannerState.BLUEPRINT))
+        assertEquals(
+            plan,
+            SceneBlueprint.fromItem(updatedBlueprint),
+        )
+        assertEquals(
+            "Custom blueprint",
+            updatedBlueprint.displayName,
+        )
         val oldSelection = reopened.selection
         reopened.reset(oldSelection)
         assertFalse(reopened.edit(
@@ -1747,6 +1781,14 @@ internal object GregTechSceneChecks {
         assertFalse(part.proxy.isActive)
         part.readFromNBT(NBTTagCompound().also(state::writeToNBT))
         val inventory = MePlannerInventory(part)
+        assertTrue(inventory.isItemValidForSlot(
+            PlannerState.BLUEPRINT,
+            ItemStack(StructureBlueprintItem),
+        ))
+        assertFalse(inventory.isItemValidForSlot(
+            PlannerState.BLUEPRINT,
+            ItemStack(BlankBlueprintItem),
+        ))
         assertEquals(
             5,
             inventory.sizeInventory,

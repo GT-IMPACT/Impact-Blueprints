@@ -59,11 +59,21 @@ internal class PlannerState(
     }
 
     internal fun hasBlueprintInput(): Boolean {
-        return inventory.getStackInSlot(BLUEPRINT_INPUT)?.item === StructureBlueprintItem
+        return blueprintToLoad() != null
+    }
+
+    private fun blueprintToLoad(): ItemStack? {
+        val output = inventory.getStackInSlot(BLUEPRINT)
+        if (output?.item === StructureBlueprintItem) {
+            return output
+        }
+        return inventory.getStackInSlot(BLUEPRINT_INPUT)?.takeIf {
+            it.item === StructureBlueprintItem
+        }
     }
 
     internal fun loadBlueprint(): Boolean {
-        val blueprint = inventory.getStackInSlot(BLUEPRINT_INPUT) ?: return false
+        val blueprint = blueprintToLoad() ?: return false
         if (blueprint.item !== StructureBlueprintItem) {
             return false
         }
@@ -128,17 +138,25 @@ internal class PlannerState(
     }
 
     internal fun canSaveBlueprint(): Boolean {
+        if (plan == null) {
+            return false
+        }
+        val output = inventory.getStackInSlot(BLUEPRINT)
+        if (output != null) {
+            return output.item === StructureBlueprintItem && output.stackSize == 1
+        }
         val input = inventory.getStackInSlot(BLUEPRINT_INPUT) ?: return false
         val writable = input.stackSize > 0 && acceptsBlueprintInput(input)
-        return plan != null && writable && inventory.getStackInSlot(BLUEPRINT) == null
+        return writable
     }
 
     internal fun saveBlueprint(): Boolean {
         val snapshot = plan ?: return false
-        val input = inventory.getStackInSlot(BLUEPRINT_INPUT) ?: return false
         if (!canSaveBlueprint()) {
             return false
         }
+        val output = inventory.getStackInSlot(BLUEPRINT)
+        val input = output ?: inventory.getStackInSlot(BLUEPRINT_INPUT) ?: return false
         val blueprint = if (input.item === StructureBlueprintItem) {
             input.copy()
         } else {
@@ -159,11 +177,13 @@ internal class PlannerState(
             return false
         }
         blueprint.tagCompound = tag
-        inventory.extractItem(
-            BLUEPRINT_INPUT,
-            1,
-            false,
-        )
+        if (output == null) {
+            inventory.extractItem(
+                BLUEPRINT_INPUT,
+                1,
+                false,
+            )
+        }
         inventory.setStackInSlot(
             BLUEPRINT,
             blueprint,
@@ -292,6 +312,10 @@ internal class PlannerState(
 
         internal fun acceptsBlueprintInput(stack: ItemStack): Boolean {
             return stack.item === BlankBlueprintItem || stack.item === StructureBlueprintItem
+        }
+
+        internal fun acceptsRecordedBlueprint(stack: ItemStack): Boolean {
+            return stack.item === StructureBlueprintItem
         }
 
         internal fun acceptsBlankPattern(stack: ItemStack?): Boolean {

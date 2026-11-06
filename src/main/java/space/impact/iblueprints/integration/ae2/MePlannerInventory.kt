@@ -26,6 +26,7 @@ internal class MePlannerInventory(
             when (slot) {
                 PlannerState.PROJECTOR -> PlannerState.acceptsProjector(stack)
                 PlannerState.BLUEPRINT_INPUT -> PlannerState.acceptsBlueprintInput(stack)
+                PlannerState.BLUEPRINT -> PlannerState.acceptsRecordedBlueprint(stack)
                 PlannerState.BLANK_PATTERN -> PlannerState.acceptsBlankPattern(stack)
                 else -> false
             }
