@@ -498,6 +498,7 @@ internal object GregTechSceneChecks {
                 2,
                 hatchCount(exchanger),
             )
+            checkDefaultHatchFacing(exchanger)
         }
         checkReactorCasings(ItemStack(
             block,
@@ -1238,6 +1239,58 @@ internal object GregTechSceneChecks {
                 Casings.AIR_FILTER_TURBINE.textureId and 127,
                 hatch.mMachineBlock.toInt(),
             )
+        }
+    }
+
+    private fun checkDefaultHatchFacing(scene: BlockScene) {
+        val alternativeId = 32007
+        val previous = GregTech_API.METATILEENTITIES[alternativeId]
+        register(
+            id = alternativeId,
+            prototype = GT_MetaTileEntity_Hatch_Output(
+                "test_alternative_output",
+                2,
+                "test",
+                null,
+            ),
+        )
+        try {
+            val original = GregTech_API.METATILEENTITIES[32005].getStackForm(1)
+            val alternative = GregTech_API.METATILEENTITIES[alternativeId].getStackForm(1)
+            val position = scene.positions().first {
+                original.isItemEqual(scene.item(it))
+            }
+            val simulation = requireNotNull(scene.simulation)
+            val originalFacing = requireNotNull(simulation.hatchFacing(position))
+            val selectedFacing = requireNotNull(simulation.nextHatchFacing(position))
+            val view = SceneView(scene)
+            view.selectBlock(
+                hit = SceneBlockHit(
+                    position = position,
+                    face = selectedFacing,
+                ),
+                additive = false,
+            )
+            assertTrue(view.replaceSelection(
+                positions = setOf(position),
+                stack = alternative,
+            ))
+            assertEquals(
+                selectedFacing,
+                simulation.hatchFacing(position),
+            )
+            assertTrue(view.replaceSelection(
+                positions = setOf(position),
+                stack = original,
+            ))
+            assertTrue(original.isItemEqual(scene.item(position)))
+            assertTrue(originalFacing != selectedFacing)
+            assertEquals(
+                selectedFacing,
+                simulation.hatchFacing(position),
+            )
+        } finally {
+            GregTech_API.METATILEENTITIES[alternativeId] = previous
         }
     }
 

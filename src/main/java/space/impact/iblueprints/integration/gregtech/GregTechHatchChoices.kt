@@ -165,6 +165,13 @@ internal class GregTechHatchChoices(
                         position = position,
                         state = replacement,
                     )
+                    val facing = targets[position]
+                    if (facing != null && scene.elements.getValue(position).matchesOriginal(stack)) {
+                        setHatchFacing(
+                            position = position,
+                            facing = facing,
+                        )
+                    }
                 }
             } catch (failure: Throwable) {
                 for (target in applied.asReversed()) {
