@@ -186,17 +186,20 @@ public class NeiPageIntegrationTest {
             )
             val engineMetadata = ModMetadata()
             engineMetadata.modId = "iblueprints"
+            val engineContainer = DummyModContainer(engineMetadata)
             val activeContainer = LoadController::class.java.getDeclaredField("activeContainer")
             activeContainer.isAccessible = true
             activeContainer.set(
                 loadController,
-                DummyModContainer(engineMetadata),
+                engineContainer,
             )
             // Exercise the real subscription point, before any IConfigureNEI plugin is loaded.
-            ClientProxy().preInit(FMLPreInitializationEvent(
+            val preInit = FMLPreInitializationEvent(
                 ASMDataTable(),
                 File("build/test-config"),
-            ))
+            )
+            preInit.applyModContainer(engineContainer)
+            ClientProxy().preInit(preInit)
             assertTrue(GameRegistry.findItem(
                 "iblueprints",
                 "structure_blueprint",

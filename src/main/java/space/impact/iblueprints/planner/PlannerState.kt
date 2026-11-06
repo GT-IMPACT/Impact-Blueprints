@@ -91,10 +91,25 @@ internal class PlannerState(
     ): Boolean {
         val previous = plan ?: return false
         val sameController = previous.getCompoundTag("controller") == snapshot.getCompoundTag("controller")
-        if (selection != expectedSelection || !sameController || !SceneBlueprint.canStore(snapshot)) {
+        if (selection != expectedSelection || !sameController) {
             return false
         }
-        setPlan(snapshot)
+        val details = "recipe=$recipe selection=$selection revision=${revision + 1}"
+        val valid = tracePlannerStep(
+            step = "server.validateEdit",
+            details = details,
+        ) {
+            SceneBlueprint.canStore(snapshot)
+        }
+        if (!valid) {
+            return false
+        }
+        tracePlannerStep(
+            step = "server.applyAndMarkDirty",
+            details = details,
+        ) {
+            setPlan(snapshot)
+        }
         return true
     }
 

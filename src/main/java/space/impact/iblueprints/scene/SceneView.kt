@@ -16,6 +16,8 @@ import net.minecraftforge.common.util.ForgeDirection
 import org.lwjgl.BufferUtils
 import org.lwjgl.input.Mouse
 import org.lwjgl.opengl.GL11
+import space.impact.iblueprints.planner.logPlannerTrace
+import space.impact.iblueprints.planner.plannerTraceEnabled
 import kotlin.math.abs
 
 /** A reusable viewport. Hosts forward clicks and scrolling only when this view consumes them. */
@@ -409,6 +411,10 @@ public class SceneView(scene: BlockScene) {
         mouseX: Int,
         mouseY: Int,
     ) {
+        val traceFirstFrame = !fitted && plannerTraceEnabled
+        if (traceFirstFrame) {
+            logPlannerTrace("viewer.firstRender begin structure=${scene.title} viewport=${width}x$height")
+        }
         require(width > 0 && height > 0)
         this.x = x
         this.y = y
@@ -453,6 +459,9 @@ public class SceneView(scene: BlockScene) {
             }
         } else {
             draw(visible)
+        }
+        if (traceFirstFrame) {
+            logPlannerTrace("viewer.firstRender end structure=${scene.title} visibleBlocks=${visible.size}")
         }
     }
 

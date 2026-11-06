@@ -21,6 +21,8 @@ import net.minecraft.util.StatCollector
 import space.impact.iblueprints.MODID
 import space.impact.iblueprints.api.SceneEntry
 import space.impact.iblueprints.integration.structures.SceneBlueprint
+import space.impact.iblueprints.planner.logPlannerTrace
+import space.impact.iblueprints.planner.tracePlannerStep
 import space.impact.iblueprints.scene.ScenePosition
 import space.impact.iblueprints.scene.SceneView
 
@@ -64,10 +66,15 @@ public object SceneViewer {
                 context.setParentScreen(parent)
             }
         }
-        ClientGUI.open(
-            screen.openParentOnClose(true),
-            settings,
-        )
+        tracePlannerStep(
+            step = "viewer.open",
+            details = "entry=${entry.id} editing=${onLayoutChanged != null}",
+        ) {
+            ClientGUI.open(
+                screen.openParentOnClose(true),
+                settings,
+            )
+        }
     }
 
     internal fun createPanel(
@@ -78,26 +85,44 @@ public object SceneViewer {
         onLayoutChanged: ((NBTTagCompound) -> Unit)? = null,
     ): ModularPanel {
         val editing = onLayoutChanged != null
-        val view = SceneView(entry.build(initialValues))
+        val details = "entry=${entry.id} editing=$editing"
+        val view = tracePlannerStep(
+            step = "viewer.build",
+            details = details,
+        ) {
+            SceneView(entry.build(initialValues))
+        }
         view.highlight(highlighted)
         if (savedPlan != null) {
-            SceneBlueprint.restore(
-                view = view,
-                plan = savedPlan,
-            )
+            tracePlannerStep(
+                step = "viewer.restore",
+                details = details,
+            ) {
+                SceneBlueprint.restore(
+                    view = view,
+                    plan = savedPlan,
+                )
+            }
         }
         val channelValues = entry.channels.associate {
             it.id to it.normalize(initialValues[it.id] ?: it.minimum)
         }.toMutableMap()
         val saveEdits: () -> Unit = {
             if (onLayoutChanged != null) {
-                val plan = SceneBlueprint.capture(
-                    scene = view.scene,
-                    channels = channelValues,
-                )
+                val captureDetails = "structure=${view.scene.title}"
+                val plan = tracePlannerStep(
+                    step = "viewer.capture",
+                    details = captureDetails,
+                ) {
+                    SceneBlueprint.capture(
+                        scene = view.scene,
+                        channels = channelValues,
+                    )
+                }
                 if (plan != null) {
                     onLayoutChanged(plan)
                 } else {
+                    logPlannerTrace("viewer.capture rejected $captureDetails")
                     Minecraft.getMinecraft().thePlayer?.addChatMessage(
                         ChatComponentTranslation("iblueprints.planner.save_failed"),
                     )
@@ -130,7 +155,12 @@ public object SceneViewer {
             .fullScreenInvisible()
             .background(Rectangle().color(0xFF24272D.toInt()))
             .onCloseAction {
-                view.scene.close()
+                tracePlannerStep(
+                    step = "viewer.close",
+                    details = details,
+                ) {
+                    view.scene.close()
+                }
             }
 
         panel.child(
@@ -339,8 +369,16 @@ public object SceneViewer {
             label = IKey.lang("iblueprints.hatch.rotate"),
             action = {
                 val position = view.inspectedPosition()
-                if (position != null && view.rotateHatch(position)) {
-                    onChanged()
+                if (position != null) {
+                    val rotated = tracePlannerStep(
+                        step = "viewer.rotate",
+                        details = "structure=${view.scene.title} position=$position",
+                    ) {
+                        view.rotateHatch(position)
+                    }
+                    if (rotated) {
+                        onChanged()
+                    }
                 }
             },
         ).widthRel(1f).height(20).marginBottom(4)

@@ -31,6 +31,7 @@ import space.impact.iblueprints.item.BlankBlueprintItem
 import space.impact.iblueprints.item.StructureBlueprintItem
 import space.impact.iblueprints.planner.BlueprintPlannerBlock
 import space.impact.iblueprints.planner.BlueprintPlannerTile
+import space.impact.iblueprints.planner.loadPlannerTraceConfig
 
 open class CommonProxy {
 
@@ -82,6 +83,7 @@ open class CommonProxy {
     }
 
     public open fun preInit(event: FMLPreInitializationEvent) {
+        loadPlannerTraceConfig(event.suggestedConfigurationFile)
         GameRegistry.registerItem(
             BlankBlueprintItem,
             BlankBlueprintItem.REGISTRY_NAME,

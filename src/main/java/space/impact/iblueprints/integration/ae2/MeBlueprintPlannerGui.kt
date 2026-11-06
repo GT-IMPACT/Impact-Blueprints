@@ -17,6 +17,8 @@ import space.impact.iblueprints.integration.nei.PlannerRecipeSelection
 import space.impact.iblueprints.integration.structures.SceneBlueprint
 import space.impact.iblueprints.planner.BlueprintPlannerGui
 import space.impact.iblueprints.planner.PlannerSession
+import space.impact.iblueprints.planner.tracePlannerStep
+import space.impact.iblueprints.scene.BlockScene
 import space.impact.iblueprints.scene.SceneView
 import java.util.Locale
 
@@ -172,7 +174,7 @@ internal class MeBlueprintPlannerGui(
     }
 
     override fun onGuiClosed() {
-        preview?.scene?.close()
+        preview?.scene?.let(::closePreview)
         preview = null
         previewPlan = null
         super.onGuiClosed()
@@ -357,20 +359,32 @@ internal class MeBlueprintPlannerGui(
     ) {
         val plan = terminal.planner.currentPlan()
         if (previewPlan !== plan) {
-            preview?.scene?.close()
+            preview?.scene?.let(::closePreview)
             preview = null
             previewPlan = plan
             val entry = BlueprintPlannerGui.entry(terminal.state)
             if (plan != null && entry != null) {
                 preview = try {
-                    SceneView(entry.build(SceneBlueprint.channels(plan))).also {
+                    val details = "entry=${entry.id}"
+                    val view = tracePlannerStep(
+                        step = "me.previewBuild",
+                        details = details,
+                    ) {
+                        SceneView(entry.build(SceneBlueprint.channels(plan)))
+                    }
+                    view.also {
                         try {
-                            SceneBlueprint.restore(
-                                view = it,
-                                plan = plan,
-                            )
+                            tracePlannerStep(
+                                step = "me.previewRestore",
+                                details = details,
+                            ) {
+                                SceneBlueprint.restore(
+                                    view = it,
+                                    plan = plan,
+                                )
+                            }
                         } catch (failure: Throwable) {
-                            it.scene.close()
+                            closePreview(it.scene)
                             throw failure
                         }
                     }
@@ -399,6 +413,15 @@ internal class MeBlueprintPlannerGui(
                 y + PREVIEW_HEIGHT,
                 0xFF171A1F.toInt(),
             )
+        }
+    }
+
+    private fun closePreview(scene: BlockScene) {
+        tracePlannerStep(
+            step = "me.previewClose",
+            details = "structure=${scene.title}",
+        ) {
+            scene.close()
         }
     }
 

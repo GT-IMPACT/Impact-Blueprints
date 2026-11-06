@@ -13,6 +13,7 @@ import net.minecraft.tileentity.TileEntity
 import net.minecraftforge.common.util.ForgeDirection
 import org.apache.logging.log4j.LogManager
 import space.impact.iblueprints.integration.structures.PreviewPlayer
+import space.impact.iblueprints.planner.tracePlannerStep
 import space.impact.iblueprints.scene.BlockScene
 import space.impact.iblueprints.scene.ISceneSimulation
 import space.impact.iblueprints.scene.SceneElement
@@ -350,8 +351,14 @@ internal class GregTechHatchChoices(
     }
 
     override fun validate(): Boolean? {
+        val details = "structure=${scene.title}"
         try {
-            val probe = scene.world.copyForProbe()
+            val probe = tracePlannerStep(
+                step = "viewer.copyValidationProbe",
+                details = details,
+            ) {
+                scene.world.copyForProbe()
+            }
             try {
                 val tile = probe.getTileEntity(
                     x = origin.x,
@@ -360,12 +367,22 @@ internal class GregTechHatchChoices(
                 ) as? IGregTechTileEntity ?: return null
                 val machine = tile.metaTileEntity as? GT_MetaTileEntity_MultiBlockBase ?: return null
                 probe.isRemote = false
-                return machine.checkMachine(
-                    tile,
-                    tile.getStackInSlot(1),
-                )
+                return tracePlannerStep(
+                    step = "viewer.checkMachine",
+                    details = details,
+                ) {
+                    machine.checkMachine(
+                        tile,
+                        tile.getStackInSlot(1),
+                    )
+                }
             } finally {
-                probe.clear()
+                tracePlannerStep(
+                    step = "viewer.clearValidationProbe",
+                    details = details,
+                ) {
+                    probe.clear()
+                }
             }
         } catch (failure: Throwable) {
             if (failure !is Exception && failure !is LinkageError) {

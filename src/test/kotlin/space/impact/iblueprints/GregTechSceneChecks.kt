@@ -83,6 +83,9 @@ import space.impact.iblueprints.item.StructureBlueprintItem
 import space.impact.iblueprints.planner.BlueprintPlannerTile
 import space.impact.iblueprints.planner.BlueprintPlannerGui
 import space.impact.iblueprints.planner.PlannerState
+import space.impact.iblueprints.planner.loadPlannerTraceConfig
+import space.impact.iblueprints.planner.plannerTraceEnabled
+import space.impact.iblueprints.planner.tracePlannerStep
 import space.impact.iblueprints.api.SceneRegistry
 import space.impact.iblueprints.api.SceneAlternativeGroups
 import space.impact.iblueprints.scene.BlockScene
@@ -103,6 +106,7 @@ import space.impact.structures.structure.IStructureElement
 import space.impact.structures.structure.IStructureElement.BlocksToPlace
 import space.impact.structures.structure.StructureUtility
 import java.io.File
+import java.nio.file.Files
 import java.lang.reflect.Proxy
 
 internal object GregTechSceneChecks {
@@ -132,6 +136,7 @@ internal object GregTechSceneChecks {
         )
         checkWorldPlacement()
         checkSceneTileCleanup()
+        checkPlannerTraceConfig()
         GregTech_API.sMachineFile = GT_Config(Configuration(File("build/test-config/scene-machines.cfg")))
         GregTech_API.sBlockCasings2 = Blocks.wool
         GregTech_API.sBlockCasings4 = Blocks.stained_hardened_clay
@@ -765,6 +770,41 @@ internal object GregTechSceneChecks {
             "test.alternatives.custom",
             SceneAlternativeGroups.group(fluidOutput),
         )
+    }
+
+    private fun checkPlannerTraceConfig() {
+        val defaults = Files.createTempFile(
+            "iblueprints-trace-defaults",
+            ".cfg",
+        )
+        val disabled = Files.createTempFile(
+            "iblueprints-trace-disabled",
+            ".cfg",
+        )
+        try {
+            loadPlannerTraceConfig(defaults.toFile())
+            assertTrue(plannerTraceEnabled)
+            Files.write(
+                disabled,
+                "diagnostics {\n    B:plannerTrace=false\n}\n".toByteArray(),
+            )
+            loadPlannerTraceConfig(disabled.toFile())
+            assertFalse(plannerTraceEnabled)
+            val result = tracePlannerStep(
+                step = "test.disabled",
+                details = "must be silent",
+            ) {
+                42
+            }
+            assertEquals(
+                42,
+                result,
+            )
+        } finally {
+            loadPlannerTraceConfig(defaults.toFile())
+            Files.deleteIfExists(defaults)
+            Files.deleteIfExists(disabled)
+        }
     }
 
     private fun checkSceneTileCleanup() {

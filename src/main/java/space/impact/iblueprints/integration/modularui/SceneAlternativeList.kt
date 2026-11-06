@@ -7,11 +7,14 @@ import com.cleanroommc.modularui.api.widget.IWidget
 import com.cleanroommc.modularui.utils.HoveredWidgetList
 import com.cleanroommc.modularui.widgets.ListWidget
 import cpw.mods.fml.common.Loader
+import net.minecraft.item.Item
 import net.minecraft.item.ItemStack
 import net.minecraft.util.EnumChatFormatting
 import net.minecraft.util.StatCollector
 import space.impact.iblueprints.api.SceneAlternativeGroups
 import space.impact.iblueprints.integration.gregtech.GregTechHatchGroups
+import space.impact.iblueprints.planner.logPlannerTrace
+import space.impact.iblueprints.planner.tracePlannerStep
 import space.impact.iblueprints.scene.ScenePosition
 import space.impact.iblueprints.scene.SceneView
 
@@ -103,7 +106,12 @@ internal class SceneAlternativeList(
         if (positions.isEmpty()) {
             return
         }
-        val stacks = view.commonAlternatives(positions)
+        val stacks = tracePlannerStep(
+            step = "viewer.alternatives",
+            details = "structure=${view.scene.title} positions=${positions.size}",
+        ) {
+            view.commonAlternatives(positions)
+        }
         val sorted = if (Loader.isModLoaded("gregtech")) {
             stacks.sortedBy(GregTechHatchGroups::tier)
         } else {
@@ -183,11 +191,23 @@ internal class SceneAlternativeList(
                     stack = stack,
                 ) == true
                 val replace: (() -> Boolean)? = if (canReplace) {
-                    {
-                        val changed = view.scene === scene && view.replaceSelection(
-                            positions = positions,
-                            stack = stack,
-                        )
+                    replace@{
+                        if (view.scene !== scene) {
+                            return@replace false
+                        }
+                        val item = Item.itemRegistry.getNameForObject(stack.item)
+                        val details = "structure=${scene.title} positions=${positions.size} " +
+                            "item=$item:${stack.itemDamage}"
+                        val changed = tracePlannerStep(
+                            step = "viewer.replace",
+                            details = details,
+                        ) {
+                            view.replaceSelection(
+                                positions = positions,
+                                stack = stack,
+                            )
+                        }
+                        logPlannerTrace("viewer.replace result changed=$changed $details")
                         if (changed) {
                             onChanged()
                         }

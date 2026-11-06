@@ -17,6 +17,7 @@ import net.minecraft.item.ItemStack
 import net.minecraft.network.PacketBuffer
 import space.impact.iblueprints.planner.PlannerSession
 import space.impact.iblueprints.planner.PlannerSlotHint
+import space.impact.iblueprints.planner.tracePlannerStep
 import java.io.IOException
 
 internal class MeBlueprintPlannerContainer(
@@ -108,16 +109,26 @@ internal class MeBlueprintPlannerContainer(
             0,
         )
         updates.onClientChange { _, packet ->
-            readPacket(
-                bytes = packet,
-                read = planner::readOnClient,
-            )
+            tracePlannerStep(
+                step = "me.receiveState",
+                details = "window=$windowId bytes=${packet.size}",
+            ) {
+                readPacket(
+                    bytes = packet,
+                    read = planner::readOnClient,
+                )
+            }
         }
         actions.onServerAction { packet ->
-            readPacket(
-                bytes = packet,
-                read = planner::readOnServer,
-            )
+            tracePlannerStep(
+                step = "me.receiveAction",
+                details = "window=$windowId bytes=${packet.size}",
+            ) {
+                readPacket(
+                    bytes = packet,
+                    read = planner::readOnServer,
+                )
+            }
         }
     }
 

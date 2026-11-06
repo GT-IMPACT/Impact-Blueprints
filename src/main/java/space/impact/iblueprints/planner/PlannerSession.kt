@@ -31,9 +31,14 @@ internal class PlannerSession(
         if (!isOpen() || state.recipe.isNotEmpty() || !checkSize(plan)) {
             return false
         }
-        sendToServer(SELECT) {
-            it.writeStringToBuffer(id)
-            it.writeNBTTagCompoundToBuffer(plan)
+        tracePlannerStep(
+            step = "client.select",
+            details = "recipe=$id",
+        ) {
+            sendToServer(SELECT) {
+                it.writeStringToBuffer(id)
+                it.writeNBTTagCompoundToBuffer(plan)
+            }
         }
         return true
     }
@@ -42,15 +47,28 @@ internal class PlannerSession(
         selection: Int,
         plan: NBTTagCompound,
     ) {
-        if (!isOpen() || selection != state.selection || !checkSize(plan)) {
+        val details = "recipe=${state.recipe} selection=$selection edit=${editSequence + 1}"
+        val ready = tracePlannerStep(
+            step = "client.prepareEdit",
+            details = details,
+        ) {
+            isOpen() && selection == state.selection && checkSize(plan)
+        }
+        if (!ready) {
+            logPlannerTrace("client.prepareEdit rejected $details")
             return
         }
         pendingPlan = plan
         editSequence++
-        sendToServer(EDIT) {
-            it.writeInt(selection)
-            it.writeInt(editSequence)
-            it.writeNBTTagCompoundToBuffer(plan)
+        tracePlannerStep(
+            step = "client.sendEdit",
+            details = "$details window=${player().openContainer.windowId}",
+        ) {
+            sendToServer(EDIT) {
+                it.writeInt(selection)
+                it.writeInt(editSequence)
+                it.writeNBTTagCompoundToBuffer(plan)
+            }
         }
     }
 
@@ -58,8 +76,13 @@ internal class PlannerSession(
         if (!isOpen()) {
             return
         }
-        sendToServer(id) {
-            it.writeInt(state.selection)
+        tracePlannerStep(
+            step = "client.action",
+            details = "action=$id recipe=${state.recipe} selection=${state.selection}",
+        ) {
+            sendToServer(id) {
+                it.writeInt(state.selection)
+            }
         }
     }
 
@@ -82,6 +105,12 @@ internal class PlannerSession(
         val snapshot = buf.readNBTTagCompoundFromBuffer() ?: return
         val previousSelection = state.selection
         state.readState(snapshot)
+        if (pendingPlan != null) {
+            logPlannerTrace(
+                "client.editAck recipe=${state.recipe} selection=${state.selection} " +
+                    "acknowledged=$acknowledged pending=$editSequence",
+            )
+        }
         if (state.selection != previousSelection || acknowledged == editSequence) {
             pendingPlan = null
         }
@@ -92,47 +121,78 @@ internal class PlannerSession(
         buf: PacketBuffer,
     ) {
         val player = player()
+        if (id == EDIT) {
+            logPlannerTrace(
+                "server.receiveEdit recipe=${state.recipe} window=${player.openContainer.windowId} " +
+                    "bytes=${buf.readableBytes()}",
+            )
+        }
         if (!isOpen()) {
+            if (id == EDIT) {
+                logPlannerTrace("server.receiveEdit rejected closed container")
+            }
             return
         }
         if (id == SELECT) {
             val recipe = buf.readStringFromBuffer(128)
-            val plan = buf.readNBTTagCompoundFromBuffer() ?: return
-            state.select(
-                id = recipe,
-                snapshot = plan,
-            )
+            tracePlannerStep(
+                step = "server.select",
+                details = "recipe=$recipe",
+            ) {
+                val plan = buf.readNBTTagCompoundFromBuffer()
+                val selected = plan != null && state.select(
+                    id = recipe,
+                    snapshot = plan,
+                )
+                logPlannerTrace("server.select result selected=$selected recipe=$recipe")
+            }
             return
         }
         val selection = buf.readInt()
         if (id == EDIT) {
             receivedEdit = buf.readInt()
-            val plan = buf.readNBTTagCompoundFromBuffer() ?: return
-            state.edit(
+            val details = "recipe=${state.recipe} selection=$selection edit=$receivedEdit"
+            val plan = tracePlannerStep(
+                step = "server.decodeEdit",
+                details = details,
+            ) {
+                buf.readNBTTagCompoundFromBuffer()
+            }
+            if (plan == null) {
+                logPlannerTrace("server.decodeEdit rejected missing plan $details")
+                return
+            }
+            val applied = state.edit(
                 expectedSelection = selection,
                 snapshot = plan,
             )
+            logPlannerTrace("server.editResult applied=$applied revision=${state.revision} $details")
             return
         }
         if (selection != state.selection) {
             return
         }
-        when (id) {
-            RESET -> state.reset(selection)
-            BLUEPRINT -> {
-                if (!state.saveBlueprint()) {
-                    player.addChatMessage(ChatComponentTranslation("iblueprints.planner.save_failed"))
+        tracePlannerStep<Unit>(
+            step = "server.action",
+            details = "action=$id recipe=${state.recipe} selection=$selection",
+        ) {
+            when (id) {
+                RESET -> state.reset(selection)
+                BLUEPRINT -> {
+                    if (!state.saveBlueprint()) {
+                        player.addChatMessage(ChatComponentTranslation("iblueprints.planner.save_failed"))
+                    }
                 }
-            }
-            PROJECTOR -> {
-                if (!state.saveProjector()) {
-                    player.addChatMessage(ChatComponentTranslation("iblueprints.planner.save_failed"))
+                PROJECTOR -> {
+                    if (!state.saveProjector()) {
+                        player.addChatMessage(ChatComponentTranslation("iblueprints.planner.save_failed"))
+                    }
                 }
-            }
-            PATTERN -> state.savePattern()
-            LOAD_BLUEPRINT -> {
-                if (!state.loadBlueprint()) {
-                    player.addChatMessage(ChatComponentTranslation("iblueprints.planner.load_failed"))
+                PATTERN -> state.savePattern()
+                LOAD_BLUEPRINT -> {
+                    if (!state.loadBlueprint()) {
+                        player.addChatMessage(ChatComponentTranslation("iblueprints.planner.load_failed"))
+                    }
                 }
             }
         }
@@ -141,11 +201,22 @@ internal class PlannerSession(
     internal fun detectAndSendChanges(init: Boolean) {
         if (init || sentRevision != state.revision || receivedEdit != acknowledgedEdit) {
             sentRevision = state.revision
+            if (receivedEdit != acknowledgedEdit) {
+                logPlannerTrace(
+                    "server.sendEditAck recipe=${state.recipe} selection=${state.selection} " +
+                        "edit=$receivedEdit revision=$sentRevision",
+                )
+            }
             acknowledgedEdit = receivedEdit
-            val state = NBTTagCompound().also(state::writeState)
-            sendToClient(STATE) {
-                it.writeInt(acknowledgedEdit)
-                it.writeNBTTagCompoundToBuffer(state)
+            tracePlannerStep(
+                step = "server.syncState",
+                details = "recipe=${state.recipe} selection=${state.selection} revision=$sentRevision",
+            ) {
+                val snapshot = NBTTagCompound().also(state::writeState)
+                sendToClient(STATE) {
+                    it.writeInt(acknowledgedEdit)
+                    it.writeNBTTagCompoundToBuffer(snapshot)
+                }
             }
         }
     }

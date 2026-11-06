@@ -16,6 +16,8 @@ import net.minecraft.nbt.NBTTagCompound
 import net.minecraft.util.ChatComponentTranslation
 import net.minecraft.util.Vec3
 import space.impact.iblueprints.planner.PlannerState
+import space.impact.iblueprints.planner.logPlannerTrace
+import space.impact.iblueprints.planner.tracePlannerStep
 
 internal class MeBlueprintPlannerPart(stack: ItemStack) : AbstractPartTerminal(stack) {
 
@@ -28,6 +30,7 @@ internal class MeBlueprintPlannerPart(stack: ItemStack) : AbstractPartTerminal(s
             host?.markForSave()
         },
     )
+    private var lastTracedSaveRevision = 0L
 
     override fun onPartActivate(
         player: EntityPlayer,
@@ -38,10 +41,15 @@ internal class MeBlueprintPlannerPart(stack: ItemStack) : AbstractPartTerminal(s
         }
         if (player is EntityPlayerMP) {
             if (accessible(player)) {
-                MePlannerGuiFactory.open(
-                    part = this,
-                    player = player,
-                )
+                tracePlannerStep(
+                    step = "me.openTerminal",
+                    details = "recipe=${planner.recipe} selection=${planner.selection}",
+                ) {
+                    MePlannerGuiFactory.open(
+                        part = this,
+                        player = player,
+                    )
+                }
             } else if (!proxy.isActive) {
                 player.addChatMessage(ChatComponentTranslation("iblueprints.planner.me_offline"))
             }
@@ -80,13 +88,28 @@ internal class MeBlueprintPlannerPart(stack: ItemStack) : AbstractPartTerminal(s
     }
 
     override fun writeToNBT(data: NBTTagCompound) {
+        val revision = planner.revision
+        val trace = revision != lastTracedSaveRevision
+        val details = "recipe=${planner.recipe} selection=${planner.selection} revision=$revision"
+        if (trace) {
+            logPlannerTrace("me.writeNBT begin $details")
+        }
         super.writeToNBT(data)
         planner.writeToNBT(data)
+        if (trace) {
+            lastTracedSaveRevision = revision
+            logPlannerTrace("me.writeNBT end $details")
+        }
     }
 
     override fun readFromNBT(data: NBTTagCompound) {
-        super.readFromNBT(data)
-        planner.readFromNBT(data)
+        tracePlannerStep(
+            step = "me.readNBT",
+            details = "hasPlan=${data.hasKey("Plan")}",
+        ) {
+            super.readFromNBT(data)
+            planner.readFromNBT(data)
+        }
     }
 
     override fun getDrops(

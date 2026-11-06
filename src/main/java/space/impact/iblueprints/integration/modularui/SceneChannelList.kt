@@ -8,6 +8,7 @@ import net.minecraft.client.Minecraft
 import net.minecraft.util.StatCollector
 import org.apache.logging.log4j.LogManager
 import space.impact.iblueprints.api.SceneEntry
+import space.impact.iblueprints.planner.tracePlannerStep
 import space.impact.iblueprints.scene.SceneView
 
 internal class SceneChannelList(
@@ -88,8 +89,13 @@ internal class SceneChannelList(
                             val requested = values.toMutableMap()
                             requested[channel.id] = next
                             try {
-                                val replacement = entry.build(requested)
-                                view.replaceConfiguredScene(replacement)
+                                tracePlannerStep(
+                                    step = "viewer.changeChannel",
+                                    details = "entry=${entry.id} channel=${channel.id} value=$next",
+                                ) {
+                                    val replacement = entry.build(requested)
+                                    view.replaceConfiguredScene(replacement)
+                                }
                                 values[channel.id] = next
                                 onChanged()
                             } catch (failure: Throwable) {

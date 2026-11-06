@@ -13,6 +13,7 @@ import net.minecraft.world.WorldSettings
 import net.minecraft.world.WorldType
 import net.minecraft.world.chunk.IChunkProvider
 import net.minecraft.world.storage.SaveHandlerMP
+import space.impact.iblueprints.planner.logPlannerTraceFailure
 import space.impact.iblueprints.scene.ScenePosition
 
 /** In-memory construction sandbox. No neighbor notifications, scheduling, saving or ticking. */
@@ -214,6 +215,13 @@ internal class SceneWorld : World(
         isRemote = true
         try {
             tile.invalidate()
+        } catch (failure: Throwable) {
+            logPlannerTraceFailure(
+                message = "scene.invalidateTile failed tile=${tile.javaClass.name} " +
+                    "position=${tile.xCoord},${tile.yCoord},${tile.zCoord} previousRemote=$previousSide",
+                failure = failure,
+            )
+            throw failure
         } finally {
             isRemote = previousSide
         }
