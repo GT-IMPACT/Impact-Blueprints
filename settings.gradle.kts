@@ -15,7 +15,7 @@ plugins {
     id("settings-setup")
 }
 
-rootProject.name = "Gui3dEngine"
+rootProject.name = "ImpactBlueprints"
 
 dependencyResolutionManagement {
     versionCatalogs {

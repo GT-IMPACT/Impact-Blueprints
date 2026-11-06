@@ -1,0 +1,15 @@
+iblueprints.title=Структура
+iblueprints.all=Все
+iblueprints.cut=Срез
+iblueprints.home=Сброс
+iblueprints.materials=Блоки сцены
+iblueprints.controls=ЛКМ: поворот/выбор; ПКМ: сдвиг; колесо: масштаб
+iblueprints.error=Ошибка сцены. См. журнал игры.
+iblueprints.open_viewer=Нажми, чтобы открыть
+iblueprints.requires_modularui=Для просмотра нужен ModularUI2
+iblueprints.required_air=Обязательное пустое пространство
+iblueprints.unresolved=Неразрешённая позиция структуры
+iblueprints.structure_incomplete=Структура неполная: см. подробности
+iblueprints.structure_unverified=Контроллер не поддерживает survival-конструктор; требования не проверены
+iblueprints.channel=Канал
+iblueprints.alternatives=Варианты для строительства:

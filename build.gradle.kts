@@ -4,9 +4,9 @@ plugins {
 }
 
 impactMod {
-    modId.set("gui3dengine")
-    modName.set("GUI 3D Engine")
-    modGroup.set("space.impact.gui3dengine")
+    modId.set("iblueprints")
+    modName.set("Impact Blueprints")
+    modGroup.set("space.impact.iblueprints")
     mavenGroup.set("space.impact")
     mavenUrl.set("https://maven.accident.space/repository/maven-releases/")
 }

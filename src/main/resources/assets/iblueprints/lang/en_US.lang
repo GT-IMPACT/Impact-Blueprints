@@ -1,0 +1,15 @@
+iblueprints.title=Structure
+iblueprints.all=All
+iblueprints.cut=Cut
+iblueprints.home=Home
+iblueprints.materials=Shown blocks
+iblueprints.controls=LMB: orbit/select; RMB: pan; wheel: zoom
+iblueprints.error=Preview failed. See game log.
+iblueprints.open_viewer=Click to open viewer
+iblueprints.requires_modularui=Install ModularUI2 to open the viewer
+iblueprints.required_air=Required empty space
+iblueprints.unresolved=Unresolved structure position
+iblueprints.structure_incomplete=Structure incomplete: see details
+iblueprints.structure_unverified=This controller does not support survival construction; requirements are unverified
+iblueprints.channel=Channel
+iblueprints.alternatives=Construction options:
