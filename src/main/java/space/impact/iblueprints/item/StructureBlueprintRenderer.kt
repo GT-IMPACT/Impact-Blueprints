@@ -12,7 +12,11 @@ import org.lwjgl.opengl.GL11
 import org.lwjgl.opengl.GL12
 import space.impact.iblueprints.integration.structures.SceneBlueprint
 
-internal object StructureBlueprintRenderer : IItemRenderer {
+internal class StructureBlueprintRenderer(
+    private val showWithoutShift: (ItemStack) -> Boolean = {
+        false
+    },
+) : IItemRenderer {
 
     private var renderingController = false
 
@@ -21,7 +25,8 @@ internal object StructureBlueprintRenderer : IItemRenderer {
         type: ItemRenderType,
     ): Boolean {
         return !renderingController && type == ItemRenderType.INVENTORY &&
-            (Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT)) &&
+            (showWithoutShift(item) || Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) ||
+                Keyboard.isKeyDown(Keyboard.KEY_RSHIFT)) &&
             controller(item) != null
     }
 
@@ -66,13 +71,13 @@ internal object StructureBlueprintRenderer : IItemRenderer {
         }
     }
 
-    private fun controller(blueprint: ItemStack): ItemStack? {
-        val plan = SceneBlueprint.fromItem(blueprint) ?: return null
+    private fun controller(stack: ItemStack): ItemStack? {
+        val plan = SceneBlueprint.fromItem(stack) ?: return null
         if (plan.getInteger("version") != StructureBlueprintItem.PLAN_VERSION) {
             return null
         }
         return SceneBlueprint.controller(plan)?.takeUnless {
-            it.item === StructureBlueprintItem
+            it.item === stack.item
         }
     }
 }

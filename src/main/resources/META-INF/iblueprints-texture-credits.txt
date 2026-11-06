@@ -1,0 +1,5 @@
+Impact Blueprints texture credits
+
+The ME terminal frame and provider base use assets from Applied Energistics 2 Unofficial.
+Applied Energistics 2 textures and models (c) 2013–2015 AlgorithmX2 et al.
+Source: https://github.com/GTNewHorizons/Applied-Energistics-2-Unofficial

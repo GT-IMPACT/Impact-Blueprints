@@ -9,7 +9,7 @@ import com.cleanroommc.modularui.widgets.SlotGroupWidget
 import com.cleanroommc.modularui.widgets.slot.ItemSlot
 import com.cleanroommc.modularui.widgets.slot.ModularSlot
 import cpw.mods.fml.common.Loader
-import net.minecraft.init.Items
+import net.minecraft.entity.player.EntityPlayer
 import net.minecraft.item.ItemStack
 import net.minecraft.util.StatCollector
 import space.impact.iblueprints.api.SceneEntry
@@ -18,16 +18,77 @@ import space.impact.iblueprints.integration.modularui.SceneActionButton
 import space.impact.iblueprints.integration.modularui.SceneViewer
 import space.impact.iblueprints.integration.nei.PlannerRecipeSelection
 import space.impact.iblueprints.integration.structures.SceneBlueprint
-import space.impact.iblueprints.item.StructureBlueprintItem
 
 internal object BlueprintPlannerGui {
 
     internal fun build(
-        tile: BlueprintPlannerTile,
+        state: PlannerState,
         manager: PanelSyncManager,
         settings: UISettings,
+        accessible: (EntityPlayer) -> Boolean,
     ): ModularPanel {
-        val sync = PlannerSync(tile)
+        val sync = bind(
+            state = state,
+            manager = manager,
+            settings = settings,
+            accessible = accessible,
+        )
+        val panel = ModularPanel.defaultPanel(
+            "blueprint_planner",
+            220,
+            192,
+        )
+        val client = manager.isClient
+        panel.child(SlotGroupWidget.playerInventory(true))
+        panel.child(
+            slot(
+                state = state,
+                hint = PlannerSlotHint.PROJECTOR,
+                x = 8,
+                y = 60,
+                client = client,
+                accepts = PlannerState::acceptsProjector,
+            ),
+        )
+        panel.child(
+            slot(
+                state = state,
+                hint = PlannerSlotHint.BLUEPRINT_INPUT,
+                x = 8,
+                y = 81,
+                client = client,
+                accepts = PlannerState::acceptsBlueprintInput,
+            ),
+        )
+        panel.child(
+            slot(
+                state = state,
+                hint = PlannerSlotHint.BLUEPRINT,
+                x = 32,
+                y = 81,
+                client = client,
+            ),
+        )
+        if (client) {
+            addControls(
+                panel = panel,
+                state = state,
+                sync = sync.session,
+            )
+        }
+        return panel
+    }
+
+    internal fun bind(
+        state: PlannerState,
+        manager: PanelSyncManager,
+        settings: UISettings,
+        accessible: (EntityPlayer) -> Boolean,
+    ): PlannerSync {
+        val sync = PlannerSync(
+            state = state,
+            accessible = accessible,
+        )
         manager.syncValue(
             "planner",
             0,
@@ -36,79 +97,43 @@ internal object BlueprintPlannerGui {
         settings.customContainer {
             PlannerContainer(sync)
         }
+        settings.canInteractWith(accessible)
         manager.registerSlotGroup(
             "planner",
             1,
         )
-        val panel = ModularPanel.defaultPanel(
-            "blueprint_planner",
-            220,
-            214,
-        )
-        val client = manager.isClient
-        panel.child(SlotGroupWidget.playerInventory(true))
-        panel.child(
-            slot(
-                tile = tile,
-                hint = PlannerSlotHint.PROJECTOR,
-                x = 8,
-                y = 60,
-                client = client,
-                accepts = BlueprintPlannerTile::acceptsProjector,
-            ),
-        )
-        panel.child(
-            slot(
-                tile = tile,
-                hint = PlannerSlotHint.PAPER,
-                x = 8,
-                y = 81,
-                client = client,
-                accepts = {
-                    it.item === Items.paper || it.item === StructureBlueprintItem
-                },
-            ),
-        )
-        panel.child(
-            slot(
-                tile = tile,
-                hint = PlannerSlotHint.BLUEPRINT,
-                x = 32,
-                y = 81,
-                client = client,
-            ),
-        )
-        panel.child(
-            slot(
-                tile = tile,
-                hint = PlannerSlotHint.BLANK_PATTERN,
-                x = 8,
-                y = 102,
-                client = client,
-                accepts = BlueprintPlannerTile::acceptsBlankPattern,
-            ),
-        )
-        panel.child(
-            slot(
-                tile = tile,
-                hint = PlannerSlotHint.PATTERN,
-                x = 32,
-                y = 102,
-                client = client,
-            ),
-        )
-        if (client) {
-            addControls(
-                panel = panel,
-                tile = tile,
-                sync = sync,
-            )
-        }
-        return panel
+        return sync
     }
 
-    private fun slot(
-        tile: BlueprintPlannerTile,
+    internal fun simulator(
+        panel: ModularPanel,
+        state: PlannerState,
+        sync: PlannerSession,
+    ): IPanelHandler {
+        return IPanelHandler.simple(
+            panel,
+            { _, _ ->
+                val entry = requireNotNull(entry(state))
+                val plan = requireNotNull(sync.currentPlan())
+                val selection = state.selection
+                SceneViewer.createPanel(
+                    entry = entry,
+                    initialValues = SceneBlueprint.channels(plan),
+                    savedPlan = plan,
+                    onLayoutChanged = {
+                        sync.edit(
+                            selection = selection,
+                            plan = it,
+                        )
+                    },
+                )
+            },
+            true,
+        )
+    }
+
+    internal fun slot(
+        state: PlannerState,
         hint: PlannerSlotHint,
         x: Int,
         y: Int,
@@ -116,7 +141,7 @@ internal object BlueprintPlannerGui {
         accepts: ((ItemStack) -> Boolean)? = null,
     ): ItemSlot {
         val slot = ModularSlot(
-            tile.inventory,
+            state.inventory,
             hint.index,
         ).slotGroup("planner")
         if (accepts == null) {
@@ -133,32 +158,17 @@ internal object BlueprintPlannerGui {
 
     private fun addControls(
         panel: ModularPanel,
-        tile: BlueprintPlannerTile,
-        sync: PlannerSync,
+        state: PlannerState,
+        sync: PlannerSession,
     ) {
-        val simulator = IPanelHandler.simple(
-            panel,
-            { _, _ ->
-                val entry = requireNotNull(entry(tile))
-                val plan = requireNotNull(sync.currentPlan())
-                val selection = tile.selection
-                SceneViewer.createPanel(
-                    entry = entry,
-                    initialValues = SceneBlueprint.channels(plan),
-                    savedPlan = plan,
-                    onLayoutChanged = {
-                        sync.edit(
-                            selection = selection,
-                            plan = it,
-                        )
-                    },
-                )
-            },
-            true,
+        val simulator = simulator(
+            panel = panel,
+            state = state,
+            sync = sync,
         )
         panel.child(IKey.lang("iblueprints.planner.title").asWidget().left(8).top(7).color(0x404040))
         panel.child(IKey.dynamic {
-            val controller = tile.plan?.let(SceneBlueprint::controller)
+            val controller = state.plan?.let(SceneBlueprint::controller)
             controller?.displayName ?: StatCollector.translateToLocal("iblueprints.planner.no_structure")
         }.asWidget().left(8).right(8).top(21).height(12).color(0x404040))
         panel.child(
@@ -171,24 +181,24 @@ internal object BlueprintPlannerGui {
                     PlannerRecipeSelection.open()
                 },
             ).left(8).top(36).width(204).setEnabledIf {
-                tile.recipe.isEmpty()
+                state.recipe.isEmpty()
             },
         )
         panel.child(
             button(
                 key = "reset",
                 action = {
-                    sync.action(PlannerSync.RESET)
+                    sync.action(PlannerSession.RESET)
                 },
             ).left(8).top(36).width(86).setEnabledIf {
-                tile.recipe.isNotEmpty()
+                state.recipe.isNotEmpty()
             },
         )
         panel.child(
             button(
                 key = "simulate",
                 enabled = {
-                    entry(tile) != null && sync.currentPlan() != null
+                    entry(state) != null && sync.currentPlan() != null
                 },
                 action = {
                     if (!simulator.isPanelOpen) {
@@ -197,65 +207,56 @@ internal object BlueprintPlannerGui {
                     }
                 },
             ).left(98).top(36).width(114).setEnabledIf {
-                tile.recipe.isNotEmpty()
+                state.recipe.isNotEmpty()
             },
         )
         panel.child(
             button(
                 key = "projector",
-                enabled = tile::canSaveProjector,
+                enabled = state::canSaveProjector,
                 action = {
-                    sync.action(PlannerSync.PROJECTOR)
+                    sync.action(PlannerSession.PROJECTOR)
                 },
             ).left(58).top(60).width(154),
         )
         panel.child(
             button(
                 key = "blueprint",
-                enabled = tile::canSaveBlueprint,
+                enabled = state::canSaveBlueprint,
                 action = {
-                    sync.action(PlannerSync.BLUEPRINT)
+                    sync.action(PlannerSession.BLUEPRINT)
                 },
             ).left(58).top(81).width(154).setEnabledIf {
-                !tile.hasBlueprintInput()
+                !state.hasBlueprintInput()
             },
         )
         panel.child(
             button(
                 key = "load_blueprint",
                 action = {
-                    sync.action(PlannerSync.LOAD_BLUEPRINT)
+                    sync.action(PlannerSession.LOAD_BLUEPRINT)
                 },
             ).left(58).top(81).width(73).setEnabledIf {
-                tile.hasBlueprintInput()
+                state.hasBlueprintInput()
             },
         )
         panel.child(
             button(
                 key = "rewrite_blueprint",
-                enabled = tile::canSaveBlueprint,
+                enabled = state::canSaveBlueprint,
                 action = {
-                    sync.action(PlannerSync.BLUEPRINT)
+                    sync.action(PlannerSession.BLUEPRINT)
                 },
             ).left(135).top(81).width(77).setEnabledIf {
-                tile.hasBlueprintInput()
+                state.hasBlueprintInput()
             },
-        )
-        panel.child(
-            button(
-                key = "pattern",
-                enabled = tile::canSavePattern,
-                action = {
-                    sync.action(PlannerSync.PATTERN)
-                },
-            ).left(58).top(102).width(154),
         )
     }
 
-    private fun entry(tile: BlueprintPlannerTile): SceneEntry? {
-        val controller = tile.plan?.let(SceneBlueprint::controller) ?: return null
+    internal fun entry(state: PlannerState): SceneEntry? {
+        val controller = state.plan?.let(SceneBlueprint::controller) ?: return null
         return SceneRegistry.find(
-            id = tile.recipe,
+            id = state.recipe,
             controller = controller,
         )
     }

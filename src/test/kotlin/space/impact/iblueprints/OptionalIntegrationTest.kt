@@ -10,6 +10,7 @@ public class OptionalIntegrationTest {
     public fun engineAndClientProxyLoadWithoutIntegrationMods() {
         val urls = (javaClass.classLoader as URLClassLoader).getURLs()
         val absent = listOf(
+            "appeng.",
             "gregtech.",
             "space.impact.structures.",
             "codechicken.",

@@ -43,6 +43,7 @@ public object SceneViewer {
         initialValues: Map<String, Int>,
         highlighted: Set<ScenePosition>,
         savedPlan: NBTTagCompound? = null,
+        onLayoutChanged: ((NBTTagCompound) -> Unit)? = null,
     ) {
         val parent = Minecraft.getMinecraft().currentScreen
         val panel = createPanel(
@@ -50,6 +51,7 @@ public object SceneViewer {
             initialValues = initialValues,
             highlighted = highlighted,
             savedPlan = savedPlan,
+            onLayoutChanged = onLayoutChanged,
         )
         val settings = UISettings()
         settings.recipeViewerSettings.disable()

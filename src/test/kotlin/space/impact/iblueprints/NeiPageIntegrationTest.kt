@@ -316,7 +316,12 @@ public class NeiPageIntegrationTest {
         }
 
         private fun checkPlannerSelection(controller: ItemStack) {
-            val planner = object : GuiContainer(PlannerContainer(PlannerSync(BlueprintPlannerTile()))) {
+            val plannerTile = BlueprintPlannerTile()
+            val plannerSync = PlannerSync(
+                state = plannerTile.planner,
+                accessible = plannerTile::accessible,
+            )
+            val planner = object : GuiContainer(PlannerContainer(plannerSync)) {
 
                 override fun drawGuiContainerBackgroundLayer(
                     partialTicks: Float,

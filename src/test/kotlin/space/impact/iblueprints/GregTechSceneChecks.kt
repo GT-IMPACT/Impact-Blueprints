@@ -1,5 +1,12 @@
 package space.impact.iblueprints
 
+import appeng.api.implementations.ICraftingPatternItem
+import appeng.api.networking.GridFlags
+import com.cleanroommc.modularui.screen.UISettings
+import com.cleanroommc.modularui.utils.item.ItemStackHandler
+import com.cleanroommc.modularui.value.sync.ModularSyncManager
+import com.cleanroommc.modularui.value.sync.PanelSyncManager
+import com.cleanroommc.modularui.widgets.slot.ItemSlot
 import cpw.mods.fml.common.DummyModContainer
 import cpw.mods.fml.common.Loader
 import cpw.mods.fml.common.ModContainer
@@ -43,6 +50,7 @@ import net.minecraft.init.Items
 import net.minecraft.item.Item
 import net.minecraft.item.ItemStack
 import net.minecraft.nbt.NBTTagCompound
+import net.minecraft.nbt.NBTTagList
 import net.minecraft.tileentity.TileEntity
 import net.minecraft.world.World
 import net.minecraftforge.common.config.Configuration
@@ -53,6 +61,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import space.impact.iblueprints.integration.gregtech.GregTechScenes
+import space.impact.iblueprints.integration.ae2.MeBlueprintPlannerItem
+import space.impact.iblueprints.integration.ae2.MeBlueprintPlannerContainer
+import space.impact.iblueprints.integration.ae2.MeBlueprintPlannerPart
+import space.impact.iblueprints.integration.ae2.MePlannerInventory
+import space.impact.iblueprints.integration.ae2.BlueprintProviderTile
+import space.impact.iblueprints.integration.ae2.PlannerPatterns
+import space.impact.iblueprints.integration.ae2.StructurePatternItem
 import space.impact.iblueprints.integration.gregtech.BlueprintHatch
 import space.impact.iblueprints.integration.nei.SceneCatalysts
 import space.impact.iblueprints.integration.nei.SceneRecipeHandler
@@ -63,8 +78,11 @@ import space.impact.iblueprints.integration.structures.BlueprintPlacement
 import space.impact.iblueprints.integration.structures.BlueprintWorldUse
 import space.impact.iblueprints.integration.structures.PreviewPlayer
 import space.impact.iblueprints.integration.structures.StructurePreviewCollector
+import space.impact.iblueprints.item.BlankBlueprintItem
 import space.impact.iblueprints.item.StructureBlueprintItem
 import space.impact.iblueprints.planner.BlueprintPlannerTile
+import space.impact.iblueprints.planner.BlueprintPlannerGui
+import space.impact.iblueprints.planner.PlannerState
 import space.impact.iblueprints.api.SceneRegistry
 import space.impact.iblueprints.api.SceneAlternativeGroups
 import space.impact.iblueprints.scene.BlockScene
@@ -97,6 +115,20 @@ internal object GregTechSceneChecks {
         GameRegistry.registerTileEntity(
             BlueprintPlannerTile::class.java,
             "iblueprints:test_planner",
+        )
+        GameRegistry.registerTileEntity(
+            BlueprintProviderTile::class.java,
+            "iblueprints:test_provider",
+        )
+        Item.itemRegistry.addObject(
+            3001,
+            "iblueprints:structure_pattern",
+            StructurePatternItem,
+        )
+        Item.itemRegistry.addObject(
+            3002,
+            "iblueprints:blank_blueprint",
+            BlankBlueprintItem,
         )
         checkWorldPlacement()
         GregTech_API.sMachineFile = GT_Config(Configuration(File("build/test-config/scene-machines.cfg")))
@@ -1308,7 +1340,29 @@ internal object GregTechSceneChecks {
         hatchFacing: ForgeDirection,
     ) {
         val controller = requireNotNull(scene.item(requireNotNull(scene.simulation).origin))
-        val planner = BlueprintPlannerTile()
+        val tile = BlueprintPlannerTile()
+        val planner = tile.planner
+        assertEquals(
+            3,
+            planner.inventory.slots,
+        )
+        val panel = BlueprintPlannerGui.build(
+            state = planner,
+            manager = PanelSyncManager(
+                ModularSyncManager(true),
+                true,
+            ),
+            settings = UISettings(),
+            accessible = {
+                true
+            },
+        )
+        assertEquals(
+            3,
+            panel.children.count {
+                it is ItemSlot
+            },
+        )
         val id = "test:machine"
         val channels = mapOf("length" to 2)
         val original = GregTechScenes.create(
@@ -1329,13 +1383,23 @@ internal object GregTechSceneChecks {
             snapshot = plan,
         ))
         planner.inventory.setStackInSlot(
-            BlueprintPlannerTile.PAPER,
-            ItemStack(Items.paper, 2),
+            PlannerState.BLUEPRINT_INPUT,
+            ItemStack(Items.paper),
         )
-        val saved = NBTTagCompound().also(planner::writeToNBT)
-        val reopened = TileEntity.createAndLoadEntity(saved) as BlueprintPlannerTile
+        assertFalse(planner.saveBlueprint())
+        planner.inventory.setStackInSlot(
+            PlannerState.BLUEPRINT_INPUT,
+            ItemStack(
+                BlankBlueprintItem,
+                2,
+            ),
+        )
+        val saved = NBTTagCompound().also(tile::writeToNBT)
+        val reopened = (TileEntity.createAndLoadEntity(saved) as BlueprintPlannerTile).planner
         assertEquals(id, reopened.recipe)
         val restoredPlan = requireNotNull(reopened.plan)
+        checkMePlanner(restoredPlan)
+        checkBlueprintProvider(restoredPlan)
         assertEquals(plan, restoredPlan)
         assertEquals(channels, SceneBlueprint.channels(restoredPlan))
         assertEquals(
@@ -1383,29 +1447,29 @@ internal object GregTechSceneChecks {
         reopened.saveBlueprint()
         assertEquals(
             1,
-            reopened.inventory.getStackInSlot(BlueprintPlannerTile.PAPER)?.stackSize,
+            reopened.inventory.getStackInSlot(PlannerState.BLUEPRINT_INPUT)?.stackSize,
         )
-        val blueprint = requireNotNull(reopened.inventory.getStackInSlot(BlueprintPlannerTile.BLUEPRINT))
+        val blueprint = requireNotNull(reopened.inventory.getStackInSlot(PlannerState.BLUEPRINT))
         assertEquals(
             plan,
             SceneBlueprint.fromItem(blueprint),
         )
-        val imported = BlueprintPlannerTile()
+        val imported = BlueprintPlannerTile().planner
         imported.inventory.setStackInSlot(
-            BlueprintPlannerTile.PAPER,
+            PlannerState.BLUEPRINT_INPUT,
             blueprint,
         )
         assertTrue(imported.loadBlueprint())
         assertEquals(id, imported.recipe)
         assertEquals(plan, imported.plan)
-        assertTrue(blueprint === imported.inventory.getStackInSlot(BlueprintPlannerTile.PAPER))
+        assertTrue(blueprint === imported.inventory.getStackInSlot(PlannerState.BLUEPRINT_INPUT))
         val projector = ItemStack(ItemConstructableTrigger())
         imported.inventory.setStackInSlot(
-            BlueprintPlannerTile.PROJECTOR,
+            PlannerState.PROJECTOR,
             projector,
         )
         assertTrue(imported.saveProjector())
-        val savedProjector = requireNotNull(imported.inventory.getStackInSlot(BlueprintPlannerTile.PROJECTOR))
+        val savedProjector = requireNotNull(imported.inventory.getStackInSlot(PlannerState.PROJECTOR))
         assertEquals(
             plan,
             SceneBlueprint.fromItem(savedProjector),
@@ -1420,7 +1484,7 @@ internal object GregTechSceneChecks {
         val legacy = blueprint.copy()
         legacy.tagCompound.removeTag(StructureBlueprintItem.RECIPE_TAG)
         imported.inventory.setStackInSlot(
-            BlueprintPlannerTile.PAPER,
+            PlannerState.BLUEPRINT_INPUT,
             legacy,
         )
         assertTrue(imported.loadBlueprint())
@@ -1431,7 +1495,7 @@ internal object GregTechSceneChecks {
             snapshot = original,
         ))
         assertTrue(imported.saveBlueprint())
-        val rewritten = requireNotNull(imported.inventory.getStackInSlot(BlueprintPlannerTile.BLUEPRINT))
+        val rewritten = requireNotNull(imported.inventory.getStackInSlot(PlannerState.BLUEPRINT))
         assertEquals(
             "Custom blueprint",
             rewritten.displayName,
@@ -1442,7 +1506,7 @@ internal object GregTechSceneChecks {
         )
         assertEquals(
             null,
-            imported.inventory.getStackInSlot(BlueprintPlannerTile.PAPER),
+            imported.inventory.getStackInSlot(PlannerState.BLUEPRINT_INPUT),
         )
         assertFalse(imported.saveBlueprint())
         val oldSelection = reopened.selection
@@ -1451,6 +1515,141 @@ internal object GregTechSceneChecks {
             expectedSelection = oldSelection,
             snapshot = plan,
         ))
+    }
+
+    private fun checkMePlanner(plan: NBTTagCompound) {
+        val state = PlannerState(
+            networked = true,
+            world = {
+                null
+            },
+            onChanged = {},
+        )
+        assertTrue(state.select(
+            id = "test:machine",
+            snapshot = plan,
+        ))
+        assertEquals(
+            5,
+            state.inventory.slots,
+        )
+        state.inventory.setStackInSlot(
+            PlannerState.BLUEPRINT_INPUT,
+            ItemStack(BlankBlueprintItem),
+        )
+        val item = ItemStack(MeBlueprintPlannerItem)
+        val part = MeBlueprintPlannerItem.createPartFromItemStack(item) as MeBlueprintPlannerPart
+        assertTrue(GridFlags.REQUIRE_CHANNEL in part.proxy.flags)
+        assertFalse(part.proxy.isActive)
+        part.readFromNBT(NBTTagCompound().also(state::writeToNBT))
+        val inventory = MePlannerInventory(part)
+        assertEquals(
+            5,
+            inventory.sizeInventory,
+        )
+        assertTrue(inventory.getStackInSlot(PlannerState.BLUEPRINT_INPUT)?.item === BlankBlueprintItem)
+        assertTrue(inventory.isItemValidForSlot(
+            PlannerState.BLUEPRINT_INPUT,
+            ItemStack(BlankBlueprintItem),
+        ))
+        assertFalse(inventory.isItemValidForSlot(
+            PlannerState.BLUEPRINT_INPUT,
+            ItemStack(Items.paper),
+        ))
+        val codec = MeBlueprintPlannerContainer.PAYLOAD
+        val frame = Unpooled.buffer()
+        try {
+            val payload = byteArrayOf(4, 9, 12)
+            codec.write(
+                frame,
+                payload,
+            )
+            frame.writeInt(-1)
+            assertTrue(codec.read(frame).contentEquals(payload))
+            assertEquals(
+                -1,
+                frame.readInt(),
+            )
+        } finally {
+            frame.release()
+        }
+        val saved = NBTTagCompound().also(part::writeToNBT)
+        assertEquals(
+            plan,
+            saved.getCompoundTag("Plan"),
+        )
+        val drops = mutableListOf<ItemStack>()
+        part.getDrops(
+            drops,
+            true,
+        )
+        assertTrue(drops.single().item === BlankBlueprintItem)
+    }
+
+    private fun checkBlueprintProvider(plan: NBTTagCompound) {
+        val pattern = requireNotNull(PlannerPatterns.structureStack(
+            item = StructurePatternItem,
+            plan = plan,
+            recipe = "test:machine",
+        ))
+        assertFalse(pattern.item is ICraftingPatternItem)
+        val materials = NBTTagList().apply {
+            appendTag(ItemStack(Items.paper).writeToNBT(NBTTagCompound()).apply {
+                setInteger("Amount", 143)
+            })
+            appendTag(ItemStack(Blocks.iron_block).writeToNBT(NBTTagCompound()).apply {
+                setInteger("Amount", 37)
+            })
+        }
+        val inventory = ItemStackHandler(29)
+        inventory.setStackInSlot(
+            0,
+            pattern,
+        )
+        inventory.setStackInSlot(
+            27,
+            ItemStack(Items.paper),
+        )
+        val snapshot = NBTTagCompound().apply {
+            setTag(
+                "Patterns",
+                inventory.serializeNBT(),
+            )
+            setTag(
+                "PendingMaterials",
+                materials,
+            )
+        }
+        val provider = BlueprintProviderTile()
+        assertTrue(GridFlags.REQUIRE_CHANNEL in provider.proxy.flags)
+        assertTrue(provider.canUpdate())
+        provider.readFromNBT(snapshot)
+
+        val saved = NBTTagCompound().also(provider::writeToNBT)
+        assertEquals(
+            39,
+            saved.getCompoundTag("Patterns").getInteger("Size"),
+        )
+        assertTrue(ItemStack.areItemStacksEqual(pattern, provider.inventory.getStackInSlot(0)))
+        assertEquals(null, provider.inventory.getStackInSlot(27))
+        assertTrue(provider.inventory.getStackInSlot(36)?.item === Items.paper)
+        assertEquals(18, provider.capacity())
+        assertEquals(
+            materials,
+            saved.getTag("PendingMaterials"),
+        )
+        for (slot in 37..38) {
+            provider.inventory.setStackInSlot(
+                slot,
+                ItemStack(Items.paper),
+            )
+        }
+        assertEquals(36, provider.capacity())
+        provider.inventory.setStackInSlot(
+            35,
+            pattern.copy(),
+        )
+        assertFalse(provider.canRemoveUpgrade())
     }
 
     private fun checkReactorCasings(controller: ItemStack) {

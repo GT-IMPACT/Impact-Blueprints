@@ -1,17 +1,22 @@
 package space.impact.iblueprints.planner
 
 import com.cleanroommc.modularui.factory.TileEntityGuiFactory
+import cpw.mods.fml.relauncher.Side
+import cpw.mods.fml.relauncher.SideOnly
 import net.minecraft.block.Block
 import net.minecraft.block.BlockContainer
 import net.minecraft.block.material.Material
+import net.minecraft.client.renderer.texture.IIconRegister
 import net.minecraft.creativetab.CreativeTabs
 import net.minecraft.entity.player.EntityPlayer
 import net.minecraft.tileentity.TileEntity
+import net.minecraft.util.IIcon
 import net.minecraft.world.World
 
 internal object BlueprintPlannerBlock : BlockContainer(Material.wood) {
 
     internal const val REGISTRY_NAME = "blueprint_planner"
+    private var blueprintTop: IIcon? = null
 
     init {
         setBlockName("iblueprints.blueprint_planner")
@@ -19,6 +24,28 @@ internal object BlueprintPlannerBlock : BlockContainer(Material.wood) {
         setCreativeTab(CreativeTabs.tabMisc)
         setHardness(2.5f)
         setStepSound(soundTypeWood)
+    }
+
+    @SideOnly(Side.CLIENT)
+    override fun registerBlockIcons(register: IIconRegister) {
+        super.registerBlockIcons(register)
+        blueprintTop = register.registerIcon("iblueprints:blueprint_planner_top")
+    }
+
+    @SideOnly(Side.CLIENT)
+    override fun getIcon(
+        side: Int,
+        metadata: Int,
+    ): IIcon? {
+        if (side == 1) {
+            blueprintTop?.let {
+                return it
+            }
+        }
+        return super.getIcon(
+            side,
+            metadata,
+        )
     }
 
     override fun createNewTileEntity(
@@ -68,8 +95,8 @@ internal object BlueprintPlannerBlock : BlockContainer(Material.wood) {
                 z,
             ) as? BlueprintPlannerTile
             if (tile != null) {
-                for (index in 0 until tile.inventory.slots) {
-                    val stack = tile.inventory.getStackInSlot(index) ?: continue
+                for (index in 0 until tile.planner.inventory.slots) {
+                    val stack = tile.planner.inventory.getStackInSlot(index) ?: continue
                     dropBlockAsItem(
                         world,
                         x,
@@ -77,7 +104,7 @@ internal object BlueprintPlannerBlock : BlockContainer(Material.wood) {
                         z,
                         stack.copy(),
                     )
-                    tile.inventory.setStackInSlot(
+                    tile.planner.inventory.setStackInSlot(
                         index,
                         null,
                     )

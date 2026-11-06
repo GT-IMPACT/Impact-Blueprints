@@ -3,6 +3,10 @@ package space.impact.iblueprints.integration.nei
 import codechicken.nei.api.IOverlayHandler
 import codechicken.nei.recipe.GuiCraftingRecipe
 import codechicken.nei.recipe.IRecipeHandler
+import cpw.mods.fml.common.Loader
+import net.minecraft.inventory.Container
+import space.impact.iblueprints.integration.ae2.MeBlueprintPlannerContainer
+import space.impact.iblueprints.planner.PlannerSession
 import net.minecraft.client.gui.inventory.GuiContainer
 import net.minecraft.util.ChatComponentTranslation
 import org.apache.logging.log4j.LogManager
@@ -39,7 +43,7 @@ internal class PlannerRecipeSelection(private val entry: SceneEntry) : IOverlayH
     }
 
     private fun select(gui: GuiContainer): Boolean {
-        val container = gui.inventorySlots as? PlannerContainer ?: return false
+        val planner = session(gui.inventorySlots) ?: return false
         val defaults = entry.channels.associate {
             it.id to it.minimum
         }
@@ -61,7 +65,7 @@ internal class PlannerRecipeSelection(private val entry: SceneEntry) : IOverlayH
             gui.mc.thePlayer.addChatMessage(ChatComponentTranslation("iblueprints.planner.save_failed"))
             return false
         }
-        return container.planner.select(
+        return planner.select(
             id = entry.id,
             plan = plan,
         )
@@ -70,6 +74,16 @@ internal class PlannerRecipeSelection(private val entry: SceneEntry) : IOverlayH
     internal companion object {
 
         internal const val QUERY = "iblueprints.planner"
+
+        internal fun session(container: Container): PlannerSession? {
+            if (container is PlannerContainer) {
+                return container.planner
+            }
+            if (Loader.isModLoaded("appliedenergistics2") && container is MeBlueprintPlannerContainer) {
+                return container.planner
+            }
+            return null
+        }
 
         internal fun open() {
             GuiCraftingRecipe.openRecipeGui(QUERY)

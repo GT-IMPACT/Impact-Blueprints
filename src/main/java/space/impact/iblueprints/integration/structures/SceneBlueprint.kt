@@ -198,7 +198,12 @@ internal object SceneBlueprint {
                 continue
             }
             val item = stack(palette.getCompoundTagAt(index)) ?: return null
-            val existing = stacks.find(item::isItemEqual)
+            val existing = stacks.find {
+                item.isItemEqual(it) && ItemStack.areItemStackTagsEqual(
+                    item,
+                    it,
+                )
+            }
             if (existing == null) {
                 item.stackSize = count
                 stacks.add(item)

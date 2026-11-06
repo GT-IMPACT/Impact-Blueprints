@@ -50,6 +50,7 @@ dependencies {
     compileOnly("com.github.GTNewHorizons:modularui:1.1.24:dev") { isTransitive = false }
     compileOnly("net.industrial-craft:industrialcraft-2:2.2.828-experimental:dev") { isTransitive = false }
     compileOnly("com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-1082-GTNH:dev") { isTransitive = false }
+    compileOnly("com.github.GTNewHorizons:GTNHLib:0.11.52:dev") { isTransitive = false }
     if (integrationRuntime.get()) {
         // Explicit support mods: never resolve the full dependency graph of a modpack.
         runtimeOnlyNonPublishable("com.github.GTNewHorizons:CodeChickenCore:1.4.22:dev") { isTransitive = false }
@@ -76,10 +77,12 @@ dependencies {
     testImplementation("com.github.GTNewHorizons:ModularUI2:2.3.92-1.7.10:dev") { isTransitive = false }
     testImplementation("com.github.GTNewHorizons:modularui:1.1.24:dev") { isTransitive = false }
     testImplementation("com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-1082-GTNH:dev") { isTransitive = false }
+    testImplementation("com.github.GTNewHorizons:GTNHLib:0.11.52:dev") { isTransitive = false }
     testImplementation("net.industrial-craft:industrialcraft-2:2.2.828-experimental:dev") { isTransitive = false }
     testImplementation(libs.test.junit)
     testImplementation("com.github.GTNewHorizons:NotEnoughItems:2.8.158-GTNH:dev") { isTransitive = false }
     testImplementation("com.github.GTNewHorizons:CodeChickenCore:1.4.22:dev") { isTransitive = false }
+    testRuntimeOnly("it.unimi.dsi:fastutil:8.5.18")
     testRuntimeOnly("org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209")
 }
 

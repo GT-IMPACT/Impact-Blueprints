@@ -19,7 +19,6 @@ import space.impact.iblueprints.api.SceneEntry
 import space.impact.iblueprints.api.SceneRegistry
 import space.impact.iblueprints.integration.gregtech.GregTechScenes
 import space.impact.iblueprints.integration.modularui.SceneViewer
-import space.impact.iblueprints.planner.PlannerContainer
 import space.impact.iblueprints.scene.SceneView
 
 /** NEI hosts only a static engine preview. Interaction belongs to the full-screen viewer. */
@@ -119,7 +118,7 @@ public class SceneRecipeHandler : TemplateRecipeHandler() {
         container: Container,
         recipe: Int,
     ): Boolean {
-        return choosingForPlanner && container is PlannerContainer && recipe in entries.indices
+        return choosingForPlanner && PlannerRecipeSelection.session(container) != null && recipe in entries.indices
     }
 
     override fun getOverlayHandler(
