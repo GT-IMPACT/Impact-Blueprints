@@ -131,6 +131,7 @@ internal object GregTechSceneChecks {
             BlankBlueprintItem,
         )
         checkWorldPlacement()
+        checkSceneTileCleanup()
         GregTech_API.sMachineFile = GT_Config(Configuration(File("build/test-config/scene-machines.cfg")))
         GregTech_API.sBlockCasings2 = Blocks.wool
         GregTech_API.sBlockCasings4 = Blocks.stained_hardened_clay
@@ -764,6 +765,45 @@ internal object GregTechSceneChecks {
             "test.alternatives.custom",
             SceneAlternativeGroups.group(fluidOutput),
         )
+    }
+
+    private fun checkSceneTileCleanup() {
+        val world = SceneWorld()
+        world.isRemote = false
+        val tile = object : TileEntity() {
+
+            override fun invalidate() {
+                assertTrue(
+                    "Preview tile cleanup must run on the client side",
+                    worldObj.isRemote,
+                )
+                super.invalidate()
+            }
+        }
+
+        world.setTileEntity(
+            0,
+            64,
+            0,
+            tile,
+        )
+        world.removeTileEntity(
+            0,
+            64,
+            0,
+        )
+        assertTrue(tile.isInvalid)
+        assertFalse(world.isRemote)
+
+        world.setTileEntity(
+            0,
+            64,
+            0,
+            tile,
+        )
+        world.clear()
+        assertTrue(tile.isInvalid)
+        assertFalse(world.isRemote)
     }
 
     private fun checkWorldPlacement() {

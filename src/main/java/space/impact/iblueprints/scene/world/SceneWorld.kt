@@ -200,11 +200,23 @@ internal class SceneWorld : World(
         y: Int,
         z: Int,
     ) {
-        tiles.remove(ScenePosition(
+        val tile = tiles.remove(ScenePosition(
             x = x,
             y = y,
             z = z,
-        ))?.invalidate()
+        )) ?: return
+        invalidatePreviewTile(tile)
+    }
+
+    private fun invalidatePreviewTile(tile: TileEntity) {
+        // Structure checks can simulate the server side. Cleanup must not run live server hooks.
+        val previousSide = isRemote
+        isRemote = true
+        try {
+            tile.invalidate()
+        } finally {
+            isRemote = previousSide
+        }
     }
 
     override fun getLightBrightnessForSkyBlocks(
@@ -314,9 +326,7 @@ internal class SceneWorld : World(
     }
 
     internal fun clear() {
-        tiles.values.forEach {
-            it.invalidate()
-        }
+        tiles.values.forEach(::invalidatePreviewTile)
         tiles.clear()
         metadata.clear()
         blocks.clear()
