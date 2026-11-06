@@ -4,7 +4,6 @@ import appeng.api.AEApi
 import appeng.core.localization.GuiText
 import cpw.mods.fml.relauncher.Side
 import cpw.mods.fml.relauncher.SideOnly
-import net.minecraft.client.gui.GuiScreen
 import net.minecraft.creativetab.CreativeTabs
 import net.minecraft.entity.player.EntityPlayer
 import net.minecraft.item.Item
@@ -19,6 +18,17 @@ import java.text.NumberFormat
 internal object StructurePatternItem : Item() {
 
     internal const val REGISTRY_NAME = "structure_pattern"
+
+    @JvmStatic
+    public fun isValidProviderPattern(
+        stack: ItemStack,
+        world: World,
+    ): Boolean {
+        return PlannerPatterns.details(
+            pattern = stack,
+            world = world,
+        ) != null
+    }
 
     init {
         setUnlocalizedName("iblueprints.structure_pattern")
@@ -125,16 +135,12 @@ internal object StructurePatternItem : Item() {
             amount = counts.format(1),
             name = controller.displayName,
         ))
-        if (GuiScreen.isShiftKeyDown()) {
-            tooltip.add("${EnumChatFormatting.DARK_GREEN}${GuiText.Ingredients.local}:")
-            for (material in materials.sortedByDescending { it.stackSize }) {
-                tooltip.add(materialLine(
-                    amount = counts.format(material.stackSize.toLong()),
-                    name = material.displayName,
-                ))
-            }
-        } else {
-            tooltip.add("${EnumChatFormatting.GRAY}${GuiText.HoldShift.local}")
+        tooltip.add("${EnumChatFormatting.DARK_GREEN}${GuiText.Ingredients.local}:")
+        for (material in materials.sortedByDescending { it.stackSize }) {
+            tooltip.add(materialLine(
+                amount = counts.format(material.stackSize.toLong()),
+                name = material.displayName,
+            ))
         }
         val no = "${EnumChatFormatting.RESET}${GuiText.No.local}"
         tooltip.add("${EnumChatFormatting.YELLOW}${GuiText.Substitute.local} $no")

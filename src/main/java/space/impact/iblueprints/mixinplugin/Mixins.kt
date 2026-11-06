@@ -6,6 +6,20 @@ import com.gtnewhorizon.gtnhmixins.builders.MixinBuilder
 
 public enum class Mixins(private val mixinBuilder: MixinBuilder) : IMixins {
 
+    BLUEPRINT_INTERFACE_TERMINAL(
+        MixinBuilder("Allow structure patterns through the interface terminal item check")
+            .setPhase(Phase.LATE)
+            .addRequiredMod(TargetedMod.AE2)
+            .addRequiredMod(TargetedMod.MODULAR_UI)
+            .addCommonMixins(
+                "ae2.InterfaceTerminalTrackerAccessor",
+                "ae2.ContainerInterfaceTerminalMixin",
+            )
+            .addClientMixins("ae2.GuiInterfaceTerminalMixin")
+            .setApplyIf {
+                true
+            },
+    ),
     WIRELESS_BLUEPRINT_PLANNER(
         MixinBuilder("Remember the blueprint planner mode in AE2FC wireless terminals")
             .setPhase(Phase.LATE)

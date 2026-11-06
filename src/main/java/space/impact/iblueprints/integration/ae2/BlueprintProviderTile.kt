@@ -11,6 +11,7 @@ import appeng.api.networking.events.MENetworkCraftingPatternChange
 import appeng.api.networking.security.MachineSource
 import appeng.api.storage.data.IAEItemStack
 import appeng.api.storage.data.IAEStack
+import appeng.api.util.IInterfaceViewable
 import appeng.me.GridAccessException
 import appeng.me.helpers.AENetworkProxy
 import appeng.tile.TileEvent
@@ -22,19 +23,23 @@ import appeng.util.item.AEItemStack
 import com.cleanroommc.modularui.utils.item.ItemStackHandler
 import net.minecraft.entity.player.EntityPlayer
 import net.minecraft.inventory.InventoryCrafting
+import net.minecraft.inventory.IInventory
 import net.minecraft.item.ItemStack
 import net.minecraft.nbt.NBTTagCompound
 import net.minecraft.nbt.NBTTagList
+import net.minecraft.tileentity.TileEntity
+import net.minecraft.util.StatCollector
 import net.minecraftforge.common.util.Constants.NBT
 import space.impact.iblueprints.integration.structures.SceneBlueprint
 
-internal class BlueprintProviderTile : AENetworkTile(), ICraftingProvider {
+internal class BlueprintProviderTile : AENetworkTile(), ICraftingProvider, IInterfaceViewable {
 
     private var active = false
     private var refreshPatterns = true
     private var offers: Set<ICraftingPatternDetails>? = null
     private val pendingMaterials = mutableListOf<ItemStack>()
     private val source = MachineSource(this)
+    private val terminalPatterns = BlueprintProviderPatternInventory(this)
     private val fakeCraftingMedium by lazy {
         BlueprintProviderCraftingHost(this).medium
     }
@@ -148,6 +153,46 @@ internal class BlueprintProviderTile : AENetworkTile(), ICraftingProvider {
 
     override fun getCrafterIcon(): ItemStack {
         return ItemStack(BlueprintProviderBlock)
+    }
+
+    override fun rows(): Int {
+        return capacity() / BASE_SLOTS
+    }
+
+    override fun rowSize(): Int {
+        return BASE_SLOTS
+    }
+
+    override fun getPatterns(): IInventory {
+        return terminalPatterns
+    }
+
+    override fun getName(): String {
+        return StatCollector.translateToLocal(rawName)
+    }
+
+    override fun getRawName(): String {
+        return "tile.iblueprints.blueprint_provider.name"
+    }
+
+    override fun getTileEntity(): TileEntity {
+        return this
+    }
+
+    override fun shouldDisplay(): Boolean {
+        return true
+    }
+
+    override fun allowsPatternOptimization(): Boolean {
+        return false
+    }
+
+    override fun getSelfRep(): ItemStack {
+        return crafterIcon
+    }
+
+    override fun getDisplayRep(): ItemStack {
+        return crafterIcon
     }
 
     override fun pushPattern(

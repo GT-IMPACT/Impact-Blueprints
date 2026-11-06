@@ -1,6 +1,7 @@
 package space.impact.iblueprints.proxy
 
 import appeng.api.AEApi
+import appeng.api.config.Upgrades
 import cpw.mods.fml.common.network.NetworkRegistry
 import cpw.mods.fml.common.Loader
 import cpw.mods.fml.common.event.FMLLoadCompleteEvent
@@ -62,6 +63,11 @@ open class CommonProxy {
                 Blocks.crafting_table,
             )
             if (Loader.isModLoaded("appliedenergistics2")) {
+                AEApi.instance().registries().interfaceTerminal().register(BlueprintProviderTile::class.java)
+                Upgrades.PATTERN_CAPACITY.registerItem(
+                    ItemStack(BlueprintProviderBlock),
+                    BlueprintProviderTile.UPGRADE_SLOTS,
+                )
                 registerMePlannerRecipes()
             }
         }
