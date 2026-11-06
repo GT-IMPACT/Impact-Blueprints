@@ -17,6 +17,7 @@ import codechicken.nei.recipe.GuiOverlayButton
 import codechicken.nei.recipe.GuiRecipeButton
 import codechicken.nei.recipe.RecipeHandlerRef
 import codechicken.nei.recipe.widget.RecipeWidget
+import com.mojang.authlib.GameProfile
 import cpw.mods.fml.common.FMLCommonHandler
 import cpw.mods.fml.common.gameevent.TickEvent
 import cpw.mods.fml.common.DummyModContainer
@@ -33,12 +34,15 @@ import cpw.mods.fml.relauncher.Side
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.inventory.GuiContainer
 import net.minecraft.client.settings.GameSettings
+import net.minecraft.entity.player.EntityPlayer
+import net.minecraft.entity.player.EntityPlayerMP
 import net.minecraft.init.Bootstrap
 import net.minecraft.init.Blocks
 import net.minecraft.item.Item
 import net.minecraft.item.ItemStack
 import net.minecraft.launchwrapper.Launch
 import net.minecraft.launchwrapper.LaunchClassLoader
+import net.minecraft.world.World
 import net.minecraftforge.common.MinecraftForge
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -60,10 +64,12 @@ import space.impact.iblueprints.planner.PlannerContainer
 import space.impact.iblueprints.planner.PlannerSync
 import space.impact.iblueprints.scene.BlockScene
 import space.impact.iblueprints.scene.ScenePosition
+import space.impact.iblueprints.scene.world.SceneWorld
 import java.awt.Point
 import java.io.File
 import java.lang.reflect.Constructor
 import java.net.URLClassLoader
+import java.util.UUID
 import java.util.function.Supplier
 
 public class NeiPageIntegrationTest {
@@ -315,7 +321,26 @@ public class NeiPageIntegrationTest {
             MinecraftForge.EVENT_BUS.unregister(SceneHandlerInfo)
             checkCatalogueAndCatalysts(controller)
             FMLCommonHandler.instance().bus().unregister(SceneCatalysts)
-            GregTechSceneChecks.run()
+            val serverPlayerConstructor = factoryClass.getMethod(
+                "newConstructorForSerialization",
+                Class::class.java,
+                Constructor::class.java,
+            ).invoke(
+                factory,
+                EntityPlayerMP::class.java,
+                EntityPlayer::class.java.getConstructor(
+                    World::class.java,
+                    GameProfile::class.java,
+                ),
+            ) as Constructor<*>
+            val serverPlayer = serverPlayerConstructor.newInstance(
+                SceneWorld(),
+                GameProfile(
+                    UUID.randomUUID(),
+                    "BlueprintSourceTest",
+                ),
+            ) as EntityPlayerMP
+            GregTechSceneChecks.run(serverPlayer)
         }
 
         private fun checkPlannerSelection(controller: ItemStack) {

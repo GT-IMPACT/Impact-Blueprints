@@ -26,6 +26,7 @@ import net.minecraftforge.common.util.ForgeDirection
 import net.minecraftforge.event.entity.player.PlayerInteractEvent
 import space.impact.iblueprints.integration.gregtech.BlueprintHatch
 import space.impact.iblueprints.item.StructureBlueprintItem
+import space.impact.iblueprints.planner.logPlannerTrace
 import space.impact.iblueprints.scene.ScenePosition
 import space.impact.structures.ConfigurationHandler
 import space.impact.structures.ImpactStructures
@@ -198,6 +199,8 @@ internal object BlueprintWorldUse {
             configuration.autoPlaceBudget
         }
         val gregTech = Loader.isModLoaded("gregtech")
+        val failures = linkedMapOf<BlueprintPlacementResult, BlueprintPlacement>()
+        var missing: ItemStack? = null
         var built = 0
         var pending = 0
         for (placement in placements) {
@@ -234,13 +237,17 @@ internal object BlueprintWorldUse {
                 }
                 continue
             }
-            if (built < budget && place(
-                    placement = placement,
-                    world = world,
-                    player = player,
-                    source = source,
-                )
-            ) {
+            if (built >= budget) {
+                pending++
+                continue
+            }
+            val result = place(
+                placement = placement,
+                world = world,
+                player = player,
+                source = source,
+            )
+            if (result == BlueprintPlacementResult.PLACED) {
                 built++
                 if (direction != null && gregTech) {
                     val hatch = world.getTileEntity(
@@ -258,7 +265,25 @@ internal object BlueprintWorldUse {
                 }
             } else {
                 pending++
+                failures.putIfAbsent(
+                    result,
+                    placement,
+                )
+                if (result == BlueprintPlacementResult.MISSING_ITEM && missing == null) {
+                    missing = stack
+                }
             }
+        }
+        val rejected = failures.entries.joinToString {
+            val item = it.value.stack
+            "${it.key}=${Item.itemRegistry.getNameForObject(item.item)}:${item.itemDamage}@${it.value.position}"
+        }
+        logPlannerTrace("world.build placed=$built remaining=$pending creative=$creative rejected=[$rejected]")
+        if (built == 0 && missing != null) {
+            player.addChatMessage(ChatComponentTranslation(
+                "impactapi.autoplace.missing_block",
+                missing.func_151000_E(),
+            ))
         }
         player.addChatMessage(
             ChatComponentTranslation(
@@ -274,39 +299,42 @@ internal object BlueprintWorldUse {
         world: World,
         player: EntityPlayer,
         source: IItemSource?,
-    ): Boolean {
+    ): BlueprintPlacementResult {
         val (position, stack) = placement
         val (x, y, z) = position
-        if (stack.item !is ItemBlock || !world.canMineBlock(
+        if (stack.item !is ItemBlock) {
+            return BlueprintPlacementResult.UNSUPPORTED_ITEM
+        }
+        if (!world.canMineBlock(
                 player,
                 x,
                 y,
                 z,
             )
         ) {
-            return false
+            return BlueprintPlacementResult.PROTECTED
         }
         // ItemBlock redirects the placement to the adjacent cell if the target isn't replaceable.
-        val block = world.getBlock(
-            x,
-            y,
-            z,
-        )
-        if (!block.isReplaceable(
+        if (!ImpactStructures.isBlockTriviallyReplaceable(
                 world,
                 x,
                 y,
                 z,
+                player,
             ) || world.getTileEntity(
                 x,
                 y,
                 z,
-            ) != null || source?.takeOne(
+            ) != null
+        ) {
+            return BlueprintPlacementResult.OCCUPIED
+        }
+        if (source?.takeOne(
                 stack,
                 true,
             ) == false
         ) {
-            return false
+            return BlueprintPlacementResult.MISSING_ITEM
         }
         val previous = BlockSnapshot.getBlockSnapshot(
             world,
@@ -314,8 +342,7 @@ internal object BlueprintWorldUse {
             y,
             z,
         )
-        val attempt = stack.copy()
-        if (!attempt.tryPlaceItemIntoWorld(
+        if (!stack.copy().tryPlaceItemIntoWorld(
                 player,
                 world,
                 x,
@@ -325,28 +352,35 @@ internal object BlueprintWorldUse {
                 0.5f,
                 0.5f,
                 0.5f,
-            ) || attempt.stackSize == stack.stackSize
+            )
         ) {
-            return false
+            return BlueprintPlacementResult.REJECTED
         }
-        if (!matchesBlock(
+        val result = if (!matchesBlock(
                 world = world,
                 x = x,
                 y = y,
                 z = z,
                 stack = stack,
-            ) || source?.takeOne(
+            )
+        ) {
+            BlueprintPlacementResult.WRONG_BLOCK
+        } else if (source?.takeOne(
                 stack,
                 false,
             ) == false
         ) {
+            BlueprintPlacementResult.EXTRACTION_FAILED
+        } else {
+            BlueprintPlacementResult.PLACED
+        }
+        if (result != BlueprintPlacementResult.PLACED) {
             previous.restore(
                 true,
                 false,
             )
-            return false
         }
-        return true
+        return result
     }
 
     private fun matchesBlock(

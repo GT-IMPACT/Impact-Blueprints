@@ -45,8 +45,10 @@ import gregtech.common.tileentities.machines.multi.GT_MetaTileEntity_HeatExchang
 import gregtech.api.util.GT_Config
 import net.minecraft.block.Block
 import net.minecraft.block.material.Material
+import net.minecraft.entity.player.EntityPlayerMP
 import net.minecraft.init.Blocks
 import net.minecraft.init.Items
+import net.minecraft.inventory.InventoryBasic
 import net.minecraft.item.Item
 import net.minecraft.item.ItemStack
 import net.minecraft.nbt.NBTTagCompound
@@ -75,6 +77,7 @@ import space.impact.iblueprints.integration.structures.SaveProjectorChannels
 import space.impact.iblueprints.integration.structures.SaveStructureBlueprint
 import space.impact.iblueprints.integration.structures.SceneBlueprint
 import space.impact.iblueprints.integration.structures.BlueprintPlacement
+import space.impact.iblueprints.integration.structures.BlueprintPlacementResult
 import space.impact.iblueprints.integration.structures.BlueprintWorldUse
 import space.impact.iblueprints.integration.structures.PreviewPlayer
 import space.impact.iblueprints.integration.structures.StructurePreviewCollector
@@ -105,13 +108,14 @@ import space.impact.structures.structure.AutoPlaceEnvironment
 import space.impact.structures.structure.IStructureElement
 import space.impact.structures.structure.IStructureElement.BlocksToPlace
 import space.impact.structures.structure.StructureUtility
+import space.impact.structures.util.InventoryUtility
 import java.io.File
 import java.nio.file.Files
 import java.lang.reflect.Proxy
 
 internal object GregTechSceneChecks {
 
-    internal fun run() {
+    internal fun run(serverPlayer: EntityPlayerMP) {
         GameRegistry.registerTileEntity(
             BaseMetaTileEntity::class.java,
             "iblueprints:test_machine",
@@ -135,6 +139,7 @@ internal object GregTechSceneChecks {
             BlankBlueprintItem,
         )
         checkWorldPlacement()
+        checkRegisteredInventoryPlacement(serverPlayer)
         checkSceneTileCleanup()
         checkPlannerTraceConfig()
         GregTech_API.sMachineFile = GT_Config(Configuration(File("build/test-config/scene-machines.cfg")))
@@ -871,12 +876,15 @@ internal object GregTechSceneChecks {
                 mapOf(stack to 1)
             }
         }
-        assertTrue(BlueprintWorldUse.place(
-            placement = placement,
-            world = world,
-            player = player,
-            source = source,
-        ))
+        assertEquals(
+            BlueprintPlacementResult.PLACED,
+            BlueprintWorldUse.place(
+                placement = placement,
+                world = world,
+                player = player,
+                source = source,
+            ),
+        )
         assertEquals(
             Blocks.stone,
             world.getBlock(
@@ -887,12 +895,15 @@ internal object GregTechSceneChecks {
         )
         assertEquals(0, available)
         available = 1
-        assertFalse(BlueprintWorldUse.place(
-            placement = placement,
-            world = world,
-            player = player,
-            source = source,
-        ))
+        assertEquals(
+            BlueprintPlacementResult.OCCUPIED,
+            BlueprintWorldUse.place(
+                placement = placement,
+                world = world,
+                player = player,
+                source = source,
+            ),
+        )
         assertEquals(1, available)
         assertEquals(
             Blocks.air,
@@ -916,18 +927,77 @@ internal object GregTechSceneChecks {
                 emptyMap()
             }
         }
-        assertFalse(BlueprintWorldUse.place(
-            placement = uncommitted,
-            world = world,
-            player = player,
-            source = unavailableOnCommit,
-        ))
+        assertEquals(
+            BlueprintPlacementResult.EXTRACTION_FAILED,
+            BlueprintWorldUse.place(
+                placement = uncommitted,
+                world = world,
+                player = player,
+                source = unavailableOnCommit,
+            ),
+        )
         assertEquals(
             Blocks.air,
             world.getBlock(
                 8,
                 64,
                 7,
+            ),
+        )
+    }
+
+    private fun checkRegisteredInventoryPlacement(serverPlayer: EntityPlayerMP) {
+        val inventory = InventoryBasic(
+            "Blueprint source test",
+            true,
+            1,
+        )
+        inventory.setInventorySlotContents(
+            0,
+            ItemStack(
+                Blocks.wool,
+                1,
+                4,
+            ),
+        )
+        InventoryUtility.registerInventoryProvider("8000-blueprint-test") { player ->
+            inventory.takeIf { player === serverPlayer }
+        }
+        val world = SceneWorld()
+        world.isRemote = false
+        val player = PreviewPlayer(world)
+        val source = IItemSource.fromPlayer(serverPlayer)
+        val placement = BlueprintPlacement(
+            position = ScenePosition(
+                x = 7,
+                y = 64,
+                z = 7,
+            ),
+            stack = ItemStack(
+                Blocks.wool,
+                1,
+                4,
+            ),
+            hatchFacing = null,
+        )
+        assertEquals(
+            BlueprintPlacementResult.PLACED,
+            BlueprintWorldUse.place(
+                placement = placement,
+                world = world,
+                player = player,
+                source = source,
+            ),
+        )
+        assertEquals(null, inventory.getStackInSlot(0))
+        val next = placement.copy(position = placement.position.copy(x = 8))
+        assertEquals(
+            BlueprintPlacementResult.MISSING_ITEM,
+            BlueprintWorldUse.place(
+                placement = next,
+                world = world,
+                player = player,
+                source = source,
             ),
         )
     }
