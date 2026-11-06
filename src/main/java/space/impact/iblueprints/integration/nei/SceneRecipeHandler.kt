@@ -141,14 +141,28 @@ public class SceneRecipeHandler : TemplateRecipeHandler() {
             entries.add(entry)
             arecipes.add(object : CachedRecipe() {
 
-                override fun getResult(): PositionedStack? {
+                override fun getResult(): PositionedStack {
+                    val controller = entry.item()
+                    val y = ScenePreviewLayout.HEIGHT - 16
                     if (!choosingForPlanner) {
-                        return null
+                        // NEI searches the result stack, even when the recipe only displays a preview.
+                        return object : PositionedStack.Placeholder(
+                            controller,
+                            3,
+                            y,
+                        ) {
+                            override fun contains(
+                                mx: Int,
+                                my: Int,
+                            ): Boolean {
+                                return false
+                            }
+                        }
                     }
                     return PositionedStack(
-                        entry.item(),
+                        controller,
                         3,
-                        ScenePreviewLayout.HEIGHT - 16,
+                        y,
                     )
                 }
             })

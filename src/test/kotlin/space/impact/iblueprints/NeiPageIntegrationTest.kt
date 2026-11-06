@@ -1,6 +1,7 @@
 package space.impact.iblueprints
 
 import codechicken.nei.event.NEIRegisterHandlerInfosEvent
+import codechicken.nei.filter.RecipeFilter
 import codechicken.nei.ItemListLoader
 import codechicken.nei.PositionedStack
 import codechicken.nei.PopupInputHandler
@@ -449,6 +450,25 @@ public class NeiPageIntegrationTest {
                 2,
                 catalogue.numRecipes(),
             )
+            val filter = RecipeFilter(
+                RecipeFilter.FilterContext.ANY,
+                true,
+            ) { stack ->
+                stack.isItemEqual(otherController)
+            }
+            val matched = (0 until catalogue.numRecipes()).filter {
+                filter.matches(
+                    catalogue,
+                    it,
+                )
+            }
+            val result = catalogue.getResultStack(matched.single())
+            assertTrue(result.item.isItemEqual(otherController))
+            assertTrue(result is PositionedStack.Placeholder)
+            assertFalse(result.contains(
+                result.relx,
+                result.rely,
+            ))
             for (item in listOf(
                 controller,
                 otherController,
