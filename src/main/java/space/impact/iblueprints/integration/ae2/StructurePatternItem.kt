@@ -1,5 +1,6 @@
 package space.impact.iblueprints.integration.ae2
 
+import appeng.api.AEApi
 import appeng.core.localization.GuiText
 import cpw.mods.fml.relauncher.Side
 import cpw.mods.fml.relauncher.SideOnly
@@ -10,6 +11,8 @@ import net.minecraft.item.Item
 import net.minecraft.item.ItemStack
 import net.minecraft.util.EnumChatFormatting
 import net.minecraft.util.StatCollector
+import net.minecraft.world.World
+import net.minecraftforge.event.ForgeEventFactory
 import space.impact.iblueprints.integration.structures.SceneBlueprint
 import java.text.NumberFormat
 
@@ -22,6 +25,71 @@ internal object StructurePatternItem : Item() {
         setTextureName("appliedenergistics2:ItemEncodedUltimatePattern")
         setMaxStackSize(1)
         setCreativeTab(CreativeTabs.tabMisc)
+    }
+
+    override fun onItemRightClick(
+        stack: ItemStack,
+        world: World,
+        player: EntityPlayer,
+    ): ItemStack {
+        clearPattern(
+            stack = stack,
+            world = world,
+            player = player,
+        )
+        return stack
+    }
+
+    override fun onItemUseFirst(
+        stack: ItemStack,
+        player: EntityPlayer,
+        world: World,
+        x: Int,
+        y: Int,
+        z: Int,
+        side: Int,
+        hitX: Float,
+        hitY: Float,
+        hitZ: Float,
+    ): Boolean {
+        if (ForgeEventFactory.onItemUseStart(
+                player,
+                stack,
+                1,
+            ) <= 0
+        ) {
+            return true
+        }
+        return clearPattern(
+            stack = stack,
+            world = world,
+            player = player,
+        )
+    }
+
+    private fun clearPattern(
+        stack: ItemStack,
+        world: World,
+        player: EntityPlayer,
+    ): Boolean {
+        if (!player.isSneaking || world.isRemote || PlannerPatterns.isOrder(stack)) {
+            return false
+        }
+        val inventory = player.inventory
+        for (slot in 0 until inventory.sizeInventory) {
+            if (inventory.getStackInSlot(slot) === stack) {
+                val blankPattern = AEApi.instance().definitions().materials().blankPattern()
+                    .maybeStack(stack.stackSize).orNull()
+                if (blankPattern != null) {
+                    inventory.setInventorySlotContents(
+                        slot,
+                        blankPattern,
+                    )
+                }
+                return true
+            }
+        }
+        return false
     }
 
     @SideOnly(Side.CLIENT)
