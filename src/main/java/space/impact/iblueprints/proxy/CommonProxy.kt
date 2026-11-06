@@ -51,6 +51,10 @@ open class CommonProxy {
                 "dyeBlue",
             ),
         )
+        GameRegistry.addShapelessRecipe(
+            ItemStack(BlankBlueprintItem),
+            StructureBlueprintItem,
+        )
         if (Loader.isModLoaded("modularui2")) {
             GameRegistry.addShapelessRecipe(
                 ItemStack(BlueprintPlannerBlock),
