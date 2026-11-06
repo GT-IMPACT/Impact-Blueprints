@@ -1,7 +1,10 @@
 package space.impact.iblueprints
 
 import codechicken.nei.event.NEIRegisterHandlerInfosEvent
+import codechicken.nei.ItemListLoader
 import codechicken.nei.PositionedStack
+import codechicken.nei.PopupInputHandler
+import codechicken.nei.guihook.GuiContainerManager
 import codechicken.nei.recipe.IRecipeHandler
 import codechicken.nei.recipe.RecipePageManager
 import codechicken.nei.scroll.ScrollContainer
@@ -10,6 +13,9 @@ import codechicken.nei.recipe.GuiRecipe
 import codechicken.nei.recipe.TemplateRecipeHandler
 import codechicken.nei.recipe.RecipeCatalysts
 import codechicken.nei.recipe.GuiCraftingRecipe
+import codechicken.nei.recipe.GuiOverlayButton
+import codechicken.nei.recipe.GuiRecipeButton
+import codechicken.nei.recipe.RecipeHandlerRef
 import codechicken.nei.recipe.widget.RecipeWidget
 import cpw.mods.fml.common.FMLCommonHandler
 import cpw.mods.fml.common.gameevent.TickEvent
@@ -18,14 +24,18 @@ import cpw.mods.fml.common.LoadController
 import cpw.mods.fml.common.Loader
 import cpw.mods.fml.common.ModMetadata
 import cpw.mods.fml.common.discovery.ASMDataTable
+import cpw.mods.fml.common.event.FMLLoadCompleteEvent
 import cpw.mods.fml.common.event.FMLPreInitializationEvent
+import cpw.mods.fml.common.registry.GameRegistry
 import cpw.mods.fml.relauncher.FMLInjectionData
 import cpw.mods.fml.relauncher.FMLRelaunchLog
 import cpw.mods.fml.relauncher.Side
 import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.inventory.GuiContainer
 import net.minecraft.client.settings.GameSettings
 import net.minecraft.init.Bootstrap
 import net.minecraft.init.Blocks
+import net.minecraft.item.Item
 import net.minecraft.item.ItemStack
 import net.minecraft.launchwrapper.Launch
 import net.minecraft.launchwrapper.LaunchClassLoader
@@ -39,9 +49,17 @@ import space.impact.iblueprints.integration.nei.SceneHandlerInfo
 import space.impact.iblueprints.integration.nei.ScenePreviewLayout
 import space.impact.iblueprints.integration.nei.SceneRecipeHandler
 import space.impact.iblueprints.integration.nei.NEIImpactBlueprintsConfig
+import space.impact.iblueprints.integration.nei.BlueprintViewInput
+import space.impact.iblueprints.integration.nei.PlannerRecipeSelection
+import space.impact.iblueprints.item.StructureBlueprintItem
 import space.impact.iblueprints.api.SceneEntry
 import space.impact.iblueprints.api.SceneRegistry
 import space.impact.iblueprints.proxy.ClientProxy
+import space.impact.iblueprints.planner.BlueprintPlannerTile
+import space.impact.iblueprints.planner.PlannerContainer
+import space.impact.iblueprints.planner.PlannerSync
+import space.impact.iblueprints.scene.BlockScene
+import space.impact.iblueprints.scene.ScenePosition
 import java.awt.Point
 import java.io.File
 import java.lang.reflect.Constructor
@@ -134,7 +152,19 @@ public class NeiPageIntegrationTest {
                     id = "test:nei_page",
                     item = controller,
                     factory = Supplier {
-                        error("Layout and tooltip checks must not construct a scene")
+                        val scene = BlockScene("First structure")
+                        for (x in 0..1) {
+                            scene.block(
+                                position = ScenePosition(
+                                    x = x,
+                                    y = 64,
+                                    z = 0,
+                                ),
+                                block = Blocks.wool,
+                                metadata = 4,
+                            )
+                        }
+                        scene
                     },
                 ),
             )
@@ -167,6 +197,20 @@ public class NeiPageIntegrationTest {
                 ASMDataTable(),
                 File("build/test-config"),
             ))
+            assertTrue(GameRegistry.findItem(
+                "iblueprints",
+                "structure_blueprint",
+            ) === StructureBlueprintItem)
+            val getPermutations = ItemListLoader::class.java.getDeclaredMethod(
+                "getPermutations",
+                Item::class.java,
+            )
+            getPermutations.isAccessible = true
+            val blueprintVariants = getPermutations.invoke(
+                null,
+                StructureBlueprintItem,
+            ) as List<*>
+            assertTrue((blueprintVariants.single() as ItemStack).item === StructureBlueprintItem)
             repeat(2) {
                 GuiRecipeTab.handlerMap.clear()
                 MinecraftForge.EVENT_BUS.post(NEIRegisterHandlerInfosEvent())
@@ -264,10 +308,57 @@ public class NeiPageIntegrationTest {
                     recipe = 0,
                 ).isEmpty())
             }
+            checkPlannerSelection(controller)
             MinecraftForge.EVENT_BUS.unregister(SceneHandlerInfo)
             checkCatalogueAndCatalysts(controller)
             FMLCommonHandler.instance().bus().unregister(SceneCatalysts)
             GregTechSceneChecks.run()
+        }
+
+        private fun checkPlannerSelection(controller: ItemStack) {
+            val planner = object : GuiContainer(PlannerContainer(PlannerSync(BlueprintPlannerTile()))) {
+
+                override fun drawGuiContainerBackgroundLayer(
+                    partialTicks: Float,
+                    mouseX: Int,
+                    mouseY: Int,
+                ) {
+                }
+            }
+            val browsing = SceneRecipeHandler()
+            browsing.loadCraftingRecipes(controller)
+            val selecting = SceneRecipeHandler()
+            selecting.loadCraftingRecipes(PlannerRecipeSelection.QUERY)
+            for (handler in listOf(
+                browsing,
+                selecting,
+            )) {
+                val gui = object : GuiRecipe<TemplateRecipeHandler>(planner) {
+
+                    override fun getCurrentRecipeHandlers(): ArrayList<TemplateRecipeHandler> {
+                        return arrayListOf(handler)
+                    }
+                }
+                val event = GuiRecipeButton.UpdateRecipeButtonsEvent.Post(
+                    gui,
+                    RecipeHandlerRef.of(
+                        handler,
+                        0,
+                    ),
+                    ScenePreviewLayout.WIDTH,
+                    ScenePreviewLayout.HEIGHT,
+                    mutableListOf(),
+                )
+                MinecraftForge.EVENT_BUS.post(event)
+                if (handler === selecting) {
+                    val button = event.buttonList.single() as GuiOverlayButton
+                    assertTrue(button.enabled && button.canFillCraftingGrid())
+                    assertEquals("?", button.displayString)
+                    assertTrue(handler.getResultStack(0).item.isItemEqual(controller))
+                } else {
+                    assertTrue(event.buttonList.isEmpty())
+                }
+            }
         }
 
         private fun checkCatalogueAndCatalysts(controller: ItemStack) {
@@ -277,11 +368,40 @@ public class NeiPageIntegrationTest {
                     id = "test:other_controller",
                     item = otherController,
                     factory = Supplier {
-                        error("Catalogue and catalyst queries must not construct scenes")
+                        BlockScene("Second structure").block(
+                            position = ScenePosition(
+                                x = 0,
+                                y = 64,
+                                z = 0,
+                            ),
+                            block = Blocks.wool,
+                            metadata = 4,
+                        ).block(
+                            position = ScenePosition(
+                                x = 1,
+                                y = 64,
+                                z = 0,
+                            ),
+                            block = Blocks.planks,
+                        )
                     },
                 ),
             )
-            NEIImpactBlueprintsConfig().loadConfig()
+            ClientProxy().loadComplete(FMLLoadCompleteEvent())
+            while (SceneCatalysts.advanceIndex()) {
+                // Drain the client-tick work without starting Minecraft's main loop.
+            }
+            val popup = PopupInputHandler()
+            GuiContainerManager.addInputHandler(popup)
+            try {
+                NEIImpactBlueprintsConfig().loadConfig()
+                assertTrue(
+                    GuiContainerManager.inputHandlers.indexOf(BlueprintViewInput) in
+                        0 until GuiContainerManager.inputHandlers.indexOf(popup),
+                )
+            } finally {
+                GuiContainerManager.inputHandlers.remove(popup)
+            }
             RecipeCatalysts.loadCatalystInfo()
             SceneHandlerInfo.register(NEIRegisterHandlerInfosEvent())
             val handlers = GuiCraftingRecipe.craftinghandlers.filterIsInstance<SceneRecipeHandler>()
@@ -328,6 +448,34 @@ public class NeiPageIntegrationTest {
                 handler.getUsageAndCatalystHandler(
                     inputId = "item",
                     ingredients = arrayOf(ItemStack(Blocks.dirt)),
+                ).numRecipes(),
+            )
+            val sharedMaterial = ItemStack(
+                Blocks.wool,
+                1,
+                4,
+            )
+            assertEquals(
+                2,
+                handler.getUsageAndCatalystHandler(
+                    inputId = "item",
+                    ingredients = arrayOf(sharedMaterial),
+                ).numRecipes(),
+            )
+            val planksUsage = handler.getUsageHandler(
+                "item",
+                ItemStack(Blocks.planks),
+            ) as SceneRecipeHandler
+            assertEquals(
+                1,
+                planksUsage.numRecipes(),
+            )
+            assertTrue(planksUsage.controller(0)?.isItemEqual(otherController) == true)
+            assertEquals(
+                0,
+                handler.getUsageHandler(
+                    "item",
+                    ItemStack(Blocks.wool),
                 ).numRecipes(),
             )
             checkPageCatalysts(catalogue)
@@ -386,21 +534,33 @@ public class NeiPageIntegrationTest {
                     panel.x = 100 - panel.w
                     FMLCommonHandler.instance().bus().post(TickEvent.ClientTickEvent(TickEvent.Phase.END))
                     assertTrue(panel.isShowWidget)
+                    val recipe = pages.recipeIndices.single()
+                    val expected = catalogue.controller(recipe)
+                    val expectedCount = if (recipe == 0) {
+                        2
+                    } else {
+                        3
+                    }
                     assertEquals(
-                        1,
+                        expectedCount,
                         panel.widgets.size,
                     )
                     assertEquals(
                         100,
                         panel.x + panel.w,
                     )
-                    val slot = panel.widgets.single()
+                    val slot = panel.widgets.first()
                     val hovered = panel.getPositionedStackMouseOver(
                         slot.x + 8,
                         slot.y + 8,
                     )
-                    val expected = catalogue.controller(pages.recipeIndices.single())
                     assertTrue(hovered != null && hovered.item.isItemEqual(expected))
+                    val materialSlot = panel.widgets[1]
+                    val material = panel.getPositionedStackMouseOver(
+                        materialSlot.x + 8,
+                        materialSlot.y + 8,
+                    )
+                    assertTrue(material?.item?.itemDamage == 4)
                     assertTrue(RecipeCatalysts.getRecipeCatalysts(catalogue).isEmpty())
                     pages.changePage(1)
                 }

@@ -22,6 +22,16 @@ public object SceneRegistry {
         return entries.values.toList()
     }
 
+    @Synchronized
+    internal fun find(
+        id: String,
+        controller: ItemStack,
+    ): SceneEntry? {
+        return entries[id]?.takeIf {
+            it.item().isItemEqual(controller)
+        } ?: matching(controller).firstOrNull()
+    }
+
     @JvmStatic
     public fun matching(stack: ItemStack): List<SceneEntry> {
         return all().filter {

@@ -1,6 +1,7 @@
 package space.impact.iblueprints.scene
 
 import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.GuiScreen
 import net.minecraft.client.gui.ScaledResolution
 import net.minecraft.client.renderer.RenderGlobal
 import net.minecraft.client.renderer.RenderBlocks
@@ -11,6 +12,7 @@ import net.minecraft.client.renderer.tileentity.TileEntityRendererDispatcher
 import net.minecraft.item.ItemStack
 import net.minecraft.util.Vec3
 import net.minecraftforge.client.ForgeHooksClient
+import net.minecraftforge.common.util.ForgeDirection
 import org.lwjgl.BufferUtils
 import org.lwjgl.input.Mouse
 import org.lwjgl.opengl.GL11
@@ -28,10 +30,19 @@ public class SceneView(scene: BlockScene) {
         private set
     public var hovered: ScenePosition? = null
         private set
-    public var selected: ScenePosition? = null
+    public val selected: ScenePosition?
+        get() {
+            return selection.keys.singleOrNull()
+        }
+    internal var structureValid: Boolean? = null
+        private set
+    internal var hasEditedStructure: Boolean = false
         private set
 
     private var highlighted: Set<ScenePosition> = emptySet()
+    private var selection: Map<ScenePosition, ForgeDirection?> = emptyMap()
+    private val replacements = linkedMapOf<ScenePosition, ItemStack>()
+    private val hatchRotations = linkedMapOf<ScenePosition, Pair<ItemStack, ForgeDirection>>()
 
     private var renderer: RenderBlocks = RenderBlocks(scene.world)
     private var x: Int = 0
@@ -40,6 +51,7 @@ public class SceneView(scene: BlockScene) {
     private var height: Int = 1
     private var fitted: Boolean = false
     private var dragButton: Int = -1
+    private var extendSelection = false
     private var lastMouseX: Int = 0
     private var lastMouseY: Int = 0
     private var dragDistance: Int = 0
@@ -49,42 +61,300 @@ public class SceneView(scene: BlockScene) {
         scene = replacement
         renderer = RenderBlocks(replacement.world)
         materials = buildMaterials()
+        replacements.clear()
+        hatchRotations.clear()
+        structureValid = null
+        hasEditedStructure = false
         hovered = null
-        selected = null
+        selection = emptyMap()
         highlighted = emptySet()
         slice.showAll()
         fitted = false
         previous.close()
     }
 
+    internal fun replaceConfiguredScene(replacement: BlockScene) {
+        val wasEdited = hasEditedStructure
+        val retained = replacements.filter { (position, stack) ->
+            replacement.simulation?.replace(
+                position = position,
+                stack = stack,
+                preferredFacing = hatchRotations[position]?.second,
+            ) == true && replacement.elements[position]?.matchesOriginal(stack) == false
+        }
+        val rotations = hatchRotations.filter { (position, rotation) ->
+            replacement.item(position)?.isItemEqual(rotation.first) == true &&
+                replacement.simulation?.setHatchFacing(
+                    position = position,
+                    facing = rotation.second,
+                ) == true
+        }
+        replaceScene(replacement)
+        replacements.putAll(retained)
+        hatchRotations.putAll(rotations)
+        hasEditedStructure = wasEdited
+        if (hasEditedStructure) {
+            validateStructure()
+        }
+    }
+
+    internal fun replaceBlock(
+        position: ScenePosition,
+        stack: ItemStack,
+        refresh: Boolean = true,
+        preferredFacing: ForgeDirection? = null,
+    ): Boolean {
+        if (scene.item(position)?.isItemEqual(stack) == true) {
+            return false
+        }
+        val simulation = scene.simulation ?: return false
+        if (!simulation.replace(
+                position = position,
+                stack = stack,
+                preferredFacing = preferredFacing,
+            )
+        ) {
+            return false
+        }
+        recordReplacement(
+            position = position,
+            stack = stack,
+            preferredFacing = preferredFacing,
+        )
+        if (refresh) {
+            refreshLayout()
+        }
+        return true
+    }
+
+    private fun recordReplacement(
+        position: ScenePosition,
+        stack: ItemStack,
+        preferredFacing: ForgeDirection?,
+    ) {
+        if (scene.elements[position]?.matchesOriginal(stack) == true) {
+            replacements.remove(position)
+        } else {
+            replacements[position] = stack.copy()
+        }
+        val facing = if (preferredFacing == null) {
+            null
+        } else {
+            scene.simulation?.hatchFacing(position)
+        }
+        if (facing == null) {
+            hatchRotations.remove(position)
+        } else {
+            hatchRotations[position] = stack.copy() to facing
+        }
+        hasEditedStructure = true
+    }
+
+    internal fun inspectedPositions(): Set<ScenePosition> {
+        if (!slice.enabled) {
+            return selection.keys
+        }
+        return selection.keys.filterTo(
+            linkedSetOf(),
+            slice::includes,
+        )
+    }
+
+    internal fun inspectedPosition(): ScenePosition? {
+        return inspectedPositions().singleOrNull()
+    }
+
+    internal fun commonAlternatives(positions: Set<ScenePosition>): List<ItemStack> {
+        val current = positions.associateWith {
+            scene.item(it) ?: return emptyList()
+        }
+        val first = current.entries.firstOrNull() ?: return emptyList()
+        val firstChoices = listOf(first.value) +
+            scene.elements[first.key]?.inspectionAlternatives().orEmpty().filterNot {
+                sameStack(
+                    first = first.value,
+                    second = it,
+                )
+            }
+        if (current.size == 1) {
+            return firstChoices
+        }
+        val simulation = scene.simulation ?: return emptyList()
+        var common = firstChoices.filter { alternative ->
+            current.values.any {
+                !sameStack(
+                    first = it,
+                    second = alternative,
+                )
+            }
+        }
+        for ((position, occupied) in current) {
+            if (common.isEmpty()) {
+                break
+            }
+            common = common.filter { alternative ->
+                sameStack(
+                    first = occupied,
+                    second = alternative,
+                ) || simulation.canReplace(
+                    position = position,
+                    stack = alternative,
+                ) && (position == first.key || scene.elements[position]?.hasAlternative(alternative) == true)
+            }
+        }
+        return common
+    }
+
+    internal fun replaceSelection(
+        positions: Set<ScenePosition>,
+        stack: ItemStack,
+    ): Boolean {
+        if (positions.isEmpty() || positions != inspectedPositions()) {
+            return false
+        }
+        if (positions.size == 1) {
+            val position = positions.single()
+            return replaceBlock(
+                position = position,
+                stack = stack,
+                preferredFacing = selection[position],
+            )
+        }
+        val targets = selection.filterKeys {
+            it in positions && !sameStack(
+                first = scene.item(it),
+                second = stack,
+            )
+        }
+        if (targets.isEmpty() || scene.simulation?.replaceAll(
+                targets = targets,
+                stack = stack,
+            ) != true
+        ) {
+            return false
+        }
+        for ((position, facing) in targets) {
+            recordReplacement(
+                position = position,
+                stack = stack,
+                preferredFacing = facing,
+            )
+        }
+        refreshLayout()
+        return true
+    }
+
+    private fun sameStack(
+        first: ItemStack?,
+        second: ItemStack,
+    ): Boolean {
+        return first?.isItemEqual(second) == true && ItemStack.areItemStackTagsEqual(
+            first,
+            second,
+        )
+    }
+
+    internal fun rotateHatch(position: ScenePosition): Boolean {
+        val facing = scene.simulation?.nextHatchFacing(position) ?: return false
+        return setHatchFacing(
+            position = position,
+            facing = facing,
+        )
+    }
+
+    internal fun setHatchFacing(
+        position: ScenePosition,
+        facing: ForgeDirection,
+        refresh: Boolean = true,
+    ): Boolean {
+        val simulation = scene.simulation ?: return false
+        val stack = scene.item(position) ?: return false
+        if (simulation.hatchFacing(position) == facing) {
+            return false
+        }
+        if (!simulation.setHatchFacing(
+                position = position,
+                facing = facing,
+            )
+        ) {
+            return false
+        }
+        hatchRotations[position] = stack to facing
+        hasEditedStructure = true
+        if (refresh) {
+            validateStructure()
+        }
+        return true
+    }
+
+    internal fun refreshLayout() {
+        materials = buildMaterials()
+        if (hasEditedStructure) {
+            validateStructure()
+        }
+    }
+
+    internal fun validateStructure() {
+        structureValid = scene.simulation?.validate()
+    }
+
     public fun resetCamera() {
+        fitCamera()
+        selection = emptyMap()
+        highlighted = emptySet()
+    }
+
+    private fun fitCamera() {
         camera.fit(
             bounds = scene.bounds(),
             width = width,
             height = height,
         )
-        selected = null
-        highlighted = emptySet()
+    }
+
+    internal fun highlight(positions: Set<ScenePosition>) {
+        highlighted = positions
     }
 
     public fun toggleMaterial(material: SceneMaterial) {
         val positions = material.positions.toSet()
-        highlighted = if (highlighted == positions) {
-            emptySet()
+        selection = if (selection.keys == positions) {
+            emptyMap()
         } else {
-            positions
+            positions.associateWith {
+                null
+            }
         }
-        selected = null
+        highlighted = emptySet()
     }
 
     public fun isMaterialSelected(material: SceneMaterial): Boolean {
-        return highlighted.isNotEmpty() && highlighted == material.positions.toSet()
+        return selection.isNotEmpty() && selection.keys == material.positions.toSet()
     }
 
     internal fun highlightedPositions(): List<ScenePosition> {
-        return scene.positions().filter {
-            slice.includes(it) && (it == selected || it in highlighted)
+        if (highlighted.isEmpty() && selection.isEmpty()) {
+            return emptyList()
         }
+        return (scene.positions().toSet() + scene.elements.keys).filter {
+            slice.includes(it) && (it in selection || it in highlighted)
+        }
+    }
+
+    internal fun selectBlock(
+        hit: SceneBlockHit?,
+        additive: Boolean,
+    ) {
+        if (additive && hit == null) {
+            return
+        }
+        selection = when {
+            hit == null -> emptyMap()
+            !additive -> mapOf(hit.position to hit.face)
+            hit.position in selection -> selection - hit.position
+            else -> selection + (hit.position to hit.face)
+        }
+        highlighted = emptySet()
     }
 
     public fun contains(
@@ -106,6 +376,7 @@ public class SceneView(scene: BlockScene) {
             return false
         }
         dragButton = button
+        extendSelection = button == 0 && GuiScreen.isShiftKeyDown()
         lastMouseX = mouseX
         lastMouseY = mouseY
         dragDistance = 0
@@ -148,15 +419,15 @@ public class SceneView(scene: BlockScene) {
             height = height,
         )
         if (!fitted) {
-            resetCamera()
+            fitCamera()
             fitted = true
         }
-        updateDrag(
+        val select = updateDrag(
             mouseX = mouseX,
             mouseY = mouseY,
         )
         val visible = scene.positions().filter(slice::includes)
-        hovered = if (contains(
+        val hit = if (contains(
             mouseX = mouseX,
             mouseY = mouseY,
         )) {
@@ -168,26 +439,37 @@ public class SceneView(scene: BlockScene) {
         } else {
             null
         }
-        draw(visible)
+        hovered = hit?.position
+        if (select) {
+            selectBlock(
+                hit = hit,
+                additive = extendSelection,
+            )
+        }
+        if (slice.enabled) {
+            // Custom renderers such as GregTech cull faces using the world rather than renderAllFaces.
+            scene.world.withVisiblePositions(positions = visible.toSet()) {
+                draw(visible)
+            }
+        } else {
+            draw(visible)
+        }
     }
 
     private fun updateDrag(
         mouseX: Int,
         mouseY: Int,
-    ) {
+    ): Boolean {
         if (dragButton < 0) {
-            return
+            return false
         }
         if (!Mouse.isButtonDown(dragButton)) {
-            if (dragButton == 0 && dragDistance < 4 && contains(
+            val select = dragButton == 0 && dragDistance < 4 && contains(
                 mouseX = mouseX,
                 mouseY = mouseY,
-            )) {
-                selected = hovered
-                highlighted = emptySet()
-            }
+            )
             dragButton = -1
-            return
+            return select
         }
         val dx = mouseX - lastMouseX
         val dy = mouseY - lastMouseY
@@ -205,6 +487,7 @@ public class SceneView(scene: BlockScene) {
         }
         lastMouseX = mouseX
         lastMouseY = mouseY
+        return false
     }
 
     private fun buildMaterials(): List<SceneMaterial> {
@@ -233,11 +516,11 @@ public class SceneView(scene: BlockScene) {
         }
     }
 
-    private fun pick(
+    internal fun pick(
         visible: List<ScenePosition>,
         mouseX: Int,
         mouseY: Int,
-    ): ScenePosition? {
+    ): SceneBlockHit? {
         val near = camera.unproject(
             x = (mouseX - x).toDouble(),
             y = (mouseY - y).toDouble(),
@@ -259,7 +542,7 @@ public class SceneView(scene: BlockScene) {
             far.z,
         )
         var nearest = Double.POSITIVE_INFINITY
-        var positionHit: ScenePosition? = null
+        var nearestHit: SceneBlockHit? = null
         for (position in visible) {
             val block = scene.world.getBlock(
                 x = position.x,
@@ -277,10 +560,16 @@ public class SceneView(scene: BlockScene) {
             val distance = start.squareDistanceTo(hit.hitVec)
             if (distance < nearest) {
                 nearest = distance
-                positionHit = position
+                val face = ForgeDirection.getOrientation(hit.sideHit)
+                nearestHit = SceneBlockHit(
+                    position = position,
+                    face = face.takeUnless {
+                        it == ForgeDirection.UNKNOWN
+                    },
+                )
             }
         }
-        return positionHit
+        return nearestHit
     }
 
     private fun draw(visible: List<ScenePosition>) {
@@ -394,7 +683,7 @@ public class SceneView(scene: BlockScene) {
             )
             RenderHelper.disableStandardItemLighting()
             mc.renderEngine.bindTexture(TextureMap.locationBlocksTexture)
-            renderer.renderAllFaces = slice.enabled
+            val selection = highlightedPositions()
             for (pass in 0..1) {
                 ForgeHooksClient.setRenderPass(pass)
                 if (pass == 0) {
@@ -407,10 +696,25 @@ public class SceneView(scene: BlockScene) {
                     )
                 }
                 GL11.glDepthMask(pass == 0)
-                drawBlocks(
-                    visible = visible,
-                    pass = pass,
-                )
+                val offsetDepth = pass == 0 && selection.isNotEmpty()
+                if (offsetDepth) {
+                    // The bias follows the face's screen-space slope, including at grazing angles.
+                    GL11.glEnable(GL11.GL_POLYGON_OFFSET_FILL)
+                    GL11.glPolygonOffset(
+                        2f,
+                        2f,
+                    )
+                }
+                try {
+                    drawBlocks(
+                        visible = visible,
+                        pass = pass,
+                    )
+                } finally {
+                    if (offsetDepth) {
+                        GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL)
+                    }
+                }
                 val dispatcher = TileEntityRendererDispatcher.instance
                 for (position in visible) {
                     val tile = scene.world.getTileEntity(
@@ -429,7 +733,7 @@ public class SceneView(scene: BlockScene) {
                     }
                 }
             }
-            drawSelection()
+            drawSelection(selection)
         } finally {
             ForgeHooksClient.setRenderPass(-1)
             GL11.glMatrixMode(GL11.GL_MODELVIEW)
@@ -442,14 +746,14 @@ public class SceneView(scene: BlockScene) {
         }
     }
 
-    private fun drawSelection() {
-        val positions = highlightedPositions()
+    private fun drawSelection(positions: List<ScenePosition>) {
         if (positions.isEmpty()) {
             return
         }
         GL11.glDisable(GL11.GL_TEXTURE_2D)
         GL11.glDisable(GL11.GL_LIGHTING)
         GL11.glDisable(GL11.GL_ALPHA_TEST)
+        GL11.glDepthFunc(GL11.GL_LEQUAL)
         GL11.glDepthMask(false)
         GL11.glLineWidth(2f)
         for (position in positions) {

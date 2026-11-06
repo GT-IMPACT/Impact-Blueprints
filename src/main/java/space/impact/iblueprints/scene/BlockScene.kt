@@ -11,6 +11,7 @@ public class BlockScene(public val title: String) : AutoCloseable {
     internal val world: SceneWorld = SceneWorld()
     public val elements: MutableMap<ScenePosition, SceneElement> = linkedMapOf()
     public val diagnostics: MutableList<String> = mutableListOf()
+    internal var simulation: ISceneSimulation? = null
 
     private val descriptions: MutableMap<ScenePosition, List<String>> = linkedMapOf()
 
@@ -98,6 +99,7 @@ public class BlockScene(public val title: String) : AutoCloseable {
     }
 
     override fun close() {
+        simulation = null
         world.clear()
         descriptions.clear()
         elements.clear()

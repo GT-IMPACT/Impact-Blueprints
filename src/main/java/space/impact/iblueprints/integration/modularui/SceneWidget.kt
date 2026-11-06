@@ -15,11 +15,9 @@ public class SceneWidget(public val view: SceneView) : Widget<SceneWidget>(), In
     init {
         tooltipDynamic {
             val position = view.hovered
-            if (position != null) {
-                val item = view.scene.item(position)
-                if (item != null) {
-                    it.addLine(item.displayName)
-                }
+            val item = position?.let(view.scene::item)
+            if (item != null) {
+                it.addLine(item.displayName)
             }
         }
     }

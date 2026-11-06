@@ -4,6 +4,7 @@ import net.minecraft.block.Block
 import net.minecraft.client.multiplayer.ChunkProviderClient
 import net.minecraft.entity.Entity
 import net.minecraft.init.Blocks
+import net.minecraft.nbt.NBTTagCompound
 import net.minecraft.profiler.Profiler
 import net.minecraft.tileentity.TileEntity
 import net.minecraft.world.World
@@ -32,6 +33,7 @@ internal class SceneWorld : World(
     private val blocks: MutableMap<ScenePosition, Block> = linkedMapOf()
     private val metadata: MutableMap<ScenePosition, Int> = hashMapOf()
     private val tiles: MutableMap<ScenePosition, TileEntity> = hashMapOf()
+    private var visiblePositions: Set<ScenePosition>? = null
 
     init {
         provider.dimensionId = Int.MAX_VALUE
@@ -62,11 +64,16 @@ internal class SceneWorld : World(
         y: Int,
         z: Int,
     ): Block {
-        return blocks[ScenePosition(
+        val position = ScenePosition(
             x = x,
             y = y,
             z = z,
-        )] ?: Blocks.air
+        )
+        return if (visiblePositions?.contains(position) == false) {
+            Blocks.air
+        } else {
+            blocks[position] ?: Blocks.air
+        }
     }
 
     override fun getBlockMetadata(
@@ -74,11 +81,16 @@ internal class SceneWorld : World(
         y: Int,
         z: Int,
     ): Int {
-        return metadata[ScenePosition(
+        val position = ScenePosition(
             x = x,
             y = y,
             z = z,
-        )] ?: 0
+        )
+        return if (visiblePositions?.contains(position) == false) {
+            0
+        } else {
+            metadata[position] ?: 0
+        }
     }
 
     override fun setBlock(
@@ -148,11 +160,16 @@ internal class SceneWorld : World(
         y: Int,
         z: Int,
     ): TileEntity? {
-        return tiles[ScenePosition(
+        val position = ScenePosition(
             x = x,
             y = y,
             z = z,
-        )]
+        )
+        return if (visiblePositions?.contains(position) == false) {
+            null
+        } else {
+            tiles[position]
+        }
     }
 
     override fun setTileEntity(
@@ -202,8 +219,98 @@ internal class SceneWorld : World(
     override fun updateEntities() {
     }
 
+    internal fun withVisiblePositions(
+        positions: Set<ScenePosition>,
+        draw: () -> Unit,
+    ) {
+        val previous = visiblePositions
+        visiblePositions = positions
+        try {
+            draw()
+        } finally {
+            visiblePositions = previous
+        }
+    }
+
     internal fun positions(): List<ScenePosition> {
         return blocks.keys.toList()
+    }
+
+    internal fun blockState(position: ScenePosition): SceneBlockState? {
+        val block = blocks[position] ?: return null
+        val tileData = tiles[position]?.let { tile ->
+            NBTTagCompound().also(tile::writeToNBT)
+        }
+        return SceneBlockState(
+            block = block,
+            metadata = metadata.getValue(position),
+            tileData = tileData,
+        )
+    }
+
+    internal fun setBlockState(
+        position: ScenePosition,
+        state: SceneBlockState,
+    ) {
+        removeTileEntity(
+            x = position.x,
+            y = position.y,
+            z = position.z,
+        )
+        blocks[position] = state.block
+        metadata[position] = state.metadata
+        val data = state.tileData ?: return
+        checkNotNull(loadProbeTile(
+            position = position,
+            data = data,
+        ))
+    }
+
+    internal fun copyForProbe(): SceneWorld {
+        val copy = SceneWorld()
+        copy.blocks.putAll(blocks)
+        copy.metadata.putAll(metadata)
+        for ((position, tile) in tiles) {
+            val data = NBTTagCompound()
+            tile.writeToNBT(data)
+            copy.loadProbeTile(
+                position = position,
+                data = data,
+            )
+        }
+        return copy
+    }
+
+    internal fun loadProbeTile(
+        position: ScenePosition,
+        data: NBTTagCompound,
+    ): TileEntity? {
+        val block = blocks[position] ?: return null
+        val tile = block.createTileEntity(
+            this,
+            metadata[position] ?: 0,
+        ) ?: return null
+        setTileEntity(
+            x = position.x,
+            y = position.y,
+            z = position.z,
+            tile = tile,
+        )
+        val tag = data.copy() as NBTTagCompound
+        tag.setInteger(
+            "x",
+            position.x,
+        )
+        tag.setInteger(
+            "y",
+            position.y,
+        )
+        tag.setInteger(
+            "z",
+            position.z,
+        )
+        tile.readFromNBT(tag)
+        return tile
     }
 
     internal fun clear() {

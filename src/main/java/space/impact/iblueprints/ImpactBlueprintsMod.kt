@@ -23,7 +23,10 @@ import space.impact.iblueprints.proxy.CommonProxy
     name = MODNAME,
     modLanguageAdapter = "net.shadowfacts.forgelin.KotlinAdapter",
     acceptedMinecraftVersions = "[1.7.10]",
-    dependencies = "required-after:forgelin;",
+    acceptableRemoteVersions = "*",
+    dependencies = "required-after:forgelin;" +
+        "after:NotEnoughItems;after:modularui2;after:impactapi;" +
+        "after:gregtech;after:impact;after:appliedenergistics2",
 )
 object ImpactBlueprintsMod {
 

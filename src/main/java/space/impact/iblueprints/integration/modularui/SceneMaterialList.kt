@@ -1,17 +1,17 @@
 package space.impact.iblueprints.integration.modularui
 
+import codechicken.nei.recipe.GuiCraftingRecipe
+import com.cleanroommc.modularui.api.drawable.IDrawable
 import com.cleanroommc.modularui.api.drawable.IKey
 import com.cleanroommc.modularui.api.widget.IWidget
-import com.cleanroommc.modularui.drawable.ItemDrawable
-import com.cleanroommc.modularui.api.drawable.IDrawable
 import com.cleanroommc.modularui.drawable.Rectangle
-import com.cleanroommc.modularui.utils.Alignment
 import com.cleanroommc.modularui.widgets.ListWidget
+import cpw.mods.fml.common.Loader
 import space.impact.iblueprints.scene.SceneView
 
 internal class SceneMaterialList(private val view: SceneView) : ListWidget<IWidget, SceneMaterialList>() {
 
-    private var shownScene = view.scene
+    private var shownMaterials = view.materials
 
     init {
         rebuild()
@@ -19,8 +19,8 @@ internal class SceneMaterialList(private val view: SceneView) : ListWidget<IWidg
 
     override fun onUpdate() {
         super.onUpdate()
-        if (shownScene !== view.scene) {
-            shownScene = view.scene
+        if (shownMaterials !== view.materials) {
+            shownMaterials = view.materials
             removeAll()
             rebuild()
         }
@@ -28,39 +28,42 @@ internal class SceneMaterialList(private val view: SceneView) : ListWidget<IWidg
 
     private fun rebuild() {
         for (material in view.materials) {
-            val positions = material.positions.toSet()
+            val quantity = "x ${material.positions.size}"
+            val label = IKey.str(quantity).color {
+                if (view.isMaterialSelected(material)) {
+                    0xFFD166
+                } else {
+                    0xFFFFFF
+                }
+            }
             child(
                 SceneMaterialRow()
                     .height(24)
                     .widthRel(1f)
-                    .background(IDrawable.NONE)
-                    .hoverBackground(Rectangle().color(0x30FFFFFF))
-                    .onMousePressed {
-                        if (it == 0) {
-                            view.toggleMaterial(material)
-                            true
-                        } else {
-                            false
-                        }
-                    }
-                    .tooltip {
-                        it.addLine(material.stack.displayName)
-                        it.addLine("× ${positions.size}")
-                    }
                     .child(
-                        ItemDrawable(material.stack).asWidget()
-                            .size(18)
-                            .left(3)
-                            .top(3),
+                        SceneMaterialSlot(material.stack).left(2).top(2).size(20)
+                            .onMouseTapped { button ->
+                                if (button != 0 || !Loader.isModLoaded("NotEnoughItems")) {
+                                    return@onMouseTapped false
+                                }
+                                GuiCraftingRecipe.openRecipeGui(
+                                    "item",
+                                    material.stack.copy(),
+                                )
+                            },
                     )
-                    .overlay(
-                        IKey.str("× ${positions.size}").color {
-                            if (view.isMaterialSelected(material)) {
-                                0xFFD166
-                            } else {
-                                0xFFFFFF
-                            }
-                        }.asIcon().alignment(Alignment.CenterRight),
+                    .child(
+                        SceneActionButton(
+                            label = label,
+                            action = {
+                                view.toggleMaterial(material)
+                            },
+                        )
+                            .left(26)
+                            .right(0)
+                            .height(24)
+                            .background(IDrawable.NONE)
+                            .hoverBackground(Rectangle().color(0x30FFFFFF)),
                     ),
             )
         }

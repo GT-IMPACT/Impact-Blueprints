@@ -40,7 +40,9 @@ public class OptionalIntegrationTest {
                 "api.SceneRegistry",
                 "scene.BlockScene",
                 "scene.SceneView",
+                "proxy.CommonProxy",
                 "proxy.ClientProxy",
+                "item.StructureBlueprintItem",
             )) {
                 val type = Class.forName(
                     "space.impact.iblueprints.$name",

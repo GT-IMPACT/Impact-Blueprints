@@ -47,13 +47,16 @@ dependencies {
         }
     }
     compileOnly("com.github.GTNewHorizons:CodeChickenCore:1.4.22:dev") { isTransitive = false }
+    compileOnly("com.github.GTNewHorizons:modularui:1.1.24:dev") { isTransitive = false }
     compileOnly("net.industrial-craft:industrialcraft-2:2.2.828-experimental:dev") { isTransitive = false }
+    compileOnly("com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-1082-GTNH:dev") { isTransitive = false }
     if (integrationRuntime.get()) {
         // Explicit support mods: never resolve the full dependency graph of a modpack.
         runtimeOnlyNonPublishable("com.github.GTNewHorizons:CodeChickenCore:1.4.22:dev") { isTransitive = false }
         runtimeOnlyNonPublishable("com.github.GTNewHorizons:modularui:1.1.24:dev") { isTransitive = false }
         runtimeOnlyNonPublishable("com.github.GTNewHorizons:Baubles-Expanded:2.2.24-GTNH:dev") { isTransitive = false }
         runtimeOnlyNonPublishable("com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-1082-GTNH:dev") { isTransitive = false }
+        runtimeOnlyNonPublishable("space.impact:GregTechBridge:1.0.2:dev") { isTransitive = false }
         runtimeOnlyNonPublishable("net.industrial-craft:industrialcraft-2:2.2.828-experimental:dev") { isTransitive = false }
         runtimeOnlyNonPublishable("space.impact:VirtualWorld:2.0.4:dev") { isTransitive = false }
         runtimeOnlyNonPublishable("space.impact:Packet-network:1.1.8.dirty:dev") { isTransitive = false }
@@ -71,6 +74,7 @@ dependencies {
     testImplementation("space.impact:ImpactStructures:1.1.3:dev") { isTransitive = false }
     testImplementation("space.impact:gregtech-impact:5.09.37.1:dev") { isTransitive = false }
     testImplementation("com.github.GTNewHorizons:ModularUI2:2.3.92-1.7.10:dev") { isTransitive = false }
+    testImplementation("com.github.GTNewHorizons:modularui:1.1.24:dev") { isTransitive = false }
     testImplementation("com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-1082-GTNH:dev") { isTransitive = false }
     testImplementation("net.industrial-craft:industrialcraft-2:2.2.828-experimental:dev") { isTransitive = false }
     testImplementation(libs.test.junit)

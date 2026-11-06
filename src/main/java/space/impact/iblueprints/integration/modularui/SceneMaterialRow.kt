@@ -1,5 +1,5 @@
 package space.impact.iblueprints.integration.modularui
 
-import com.cleanroommc.modularui.widgets.ButtonWidget
+import com.cleanroommc.modularui.widget.ParentWidget
 
-internal class SceneMaterialRow : ButtonWidget<SceneMaterialRow>()
+internal class SceneMaterialRow : ParentWidget<SceneMaterialRow>()

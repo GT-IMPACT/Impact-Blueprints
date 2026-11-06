@@ -13,16 +13,15 @@ import space.impact.iblueprints.scene.SceneView
 internal class SceneChannelList(
     private val view: SceneView,
     private val entry: SceneEntry,
+    private val values: MutableMap<String, Int>,
+    onChanged: () -> Unit,
+    editable: Boolean,
 ) : ListWidget<IWidget, SceneChannelList>() {
 
     internal companion object {
 
         internal const val ROW_HEIGHT: Int = 36
     }
-
-    private val values: MutableMap<String, Int> = entry.channels.associate {
-        it.id to it.minimum
-    }.toMutableMap()
 
     init {
         for (channel in entry.channels) {
@@ -41,7 +40,7 @@ internal class SceneChannelList(
                     .tooltip {
                         it.addLine(channel.label)
                         it.addLine(channel.description)
-                        it.addLine("${channel.minimum} … ${channel.maximum}")
+                        it.addLine("${channel.minimum} - ${channel.maximum}")
                     },
             )
             row.child(
@@ -58,6 +57,10 @@ internal class SceneChannelList(
                     .color(0xFFFFFF)
                     .textAlign(Alignment.Center),
             )
+            child(row)
+            if (!editable) {
+                continue
+            }
             for (delta in listOf(
                 -1,
                 1,
@@ -86,9 +89,13 @@ internal class SceneChannelList(
                             requested[channel.id] = next
                             try {
                                 val replacement = entry.build(requested)
-                                view.replaceScene(replacement)
+                                view.replaceConfiguredScene(replacement)
                                 values[channel.id] = next
-                            } catch (failure: Exception) {
+                                onChanged()
+                            } catch (failure: Throwable) {
+                                if (failure !is Exception && failure !is LinkageError) {
+                                    throw failure
+                                }
                                 LogManager.getLogger("ImpactBlueprints").error(
                                     "Cannot change scene channel",
                                     failure,
@@ -105,7 +112,6 @@ internal class SceneChannelList(
                 }
                 row.child(button)
             }
-            child(row)
         }
     }
 }

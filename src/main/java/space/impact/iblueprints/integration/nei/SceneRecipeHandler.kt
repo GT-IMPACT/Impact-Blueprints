@@ -2,29 +2,59 @@ package space.impact.iblueprints.integration.nei
 
 import codechicken.lib.gui.GuiDraw
 import codechicken.nei.PositionedStack
+import codechicken.nei.api.IOverlayHandler
 import codechicken.nei.recipe.GuiRecipe
 import codechicken.nei.recipe.IUsageHandler
 import codechicken.nei.recipe.TemplateRecipeHandler
 import cpw.mods.fml.common.Loader
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Gui
+import net.minecraft.client.gui.inventory.GuiContainer
+import net.minecraft.inventory.Container
 import net.minecraft.item.ItemStack
+import net.minecraft.util.EnumChatFormatting
 import net.minecraft.util.StatCollector
 import org.apache.logging.log4j.LogManager
 import space.impact.iblueprints.api.SceneEntry
 import space.impact.iblueprints.api.SceneRegistry
+import space.impact.iblueprints.integration.gregtech.GregTechScenes
 import space.impact.iblueprints.integration.modularui.SceneViewer
+import space.impact.iblueprints.planner.PlannerContainer
 import space.impact.iblueprints.scene.SceneView
 
 /** NEI hosts only a static engine preview. Interaction belongs to the full-screen viewer. */
 public class SceneRecipeHandler : TemplateRecipeHandler() {
 
     private val entries: MutableList<SceneEntry> = mutableListOf()
+    private var usageStack: ItemStack? = null
     private var view: SceneView? = null
     private var activeRecipe: Int = -1
+    private var choosingForPlanner: Boolean = false
 
     internal fun controller(recipe: Int): ItemStack? {
         return entries.getOrNull(recipe)?.item()
+    }
+
+    internal fun catalysts(recipe: Int): List<PositionedStack> {
+        val controller = controller(recipe) ?: return emptyList()
+        val gregTechLoaded = Loader.isModLoaded("gregtech")
+        val materials = prepare(recipe)?.materials.orEmpty().map {
+            it.stack
+        }.filterNot {
+            val sameController = it.isItemEqual(controller) && ItemStack.areItemStackTagsEqual(
+                it,
+                controller,
+            )
+            sameController || gregTechLoaded && GregTechScenes.isHatch(it)
+        }
+        return (listOf(controller) + materials).map {
+            PositionedStack(
+                it.copy(),
+                0,
+                0,
+                false,
+            )
+        }
     }
 
     override fun getRecipeHeight(recipe: Int): Int {
@@ -44,14 +74,23 @@ public class SceneRecipeHandler : TemplateRecipeHandler() {
     }
 
     override fun loadUsageRecipes(ingredient: ItemStack) {
-        addEntries(SceneRegistry.matching(ingredient))
+        usageStack = ingredient.copy()
+        addEntries((SceneRegistry.matching(ingredient) + SceneCatalysts.matching(ingredient)).distinct())
+    }
+
+    private fun materialUsage(entry: SceneEntry): SceneMaterialUsage? {
+        val stack = usageStack ?: return null
+        return SceneCatalysts.usage(
+            entry = entry,
+            stack = stack,
+        )
     }
 
     override fun getUsageAndCatalystHandler(
         inputId: String,
         vararg ingredients: Any,
     ): IUsageHandler {
-        // A controller selects its own structure; NEI's default catalyst path would open the whole catalogue.
+        // Match controllers and materials to individual scenes instead of opening the whole catalogue.
         return getUsageHandler(
             inputId,
             *ingredients,
@@ -62,7 +101,10 @@ public class SceneRecipeHandler : TemplateRecipeHandler() {
         outputId: String,
         vararg results: Any,
     ) {
-        if (outputId == "iblueprints.scenes" || outputId == "all") {
+        if (outputId == PlannerRecipeSelection.QUERY) {
+            choosingForPlanner = true
+            addEntries(SceneRegistry.all())
+        } else if (outputId == "iblueprints.scenes" || outputId == "all") {
             addEntries(SceneRegistry.all())
         } else {
             super.loadCraftingRecipes(
@@ -72,13 +114,43 @@ public class SceneRecipeHandler : TemplateRecipeHandler() {
         }
     }
 
+    override fun hasOverlay(
+        gui: GuiContainer,
+        container: Container,
+        recipe: Int,
+    ): Boolean {
+        return choosingForPlanner && container is PlannerContainer && recipe in entries.indices
+    }
+
+    override fun getOverlayHandler(
+        gui: GuiContainer,
+        recipe: Int,
+    ): IOverlayHandler? {
+        if (!hasOverlay(
+                gui,
+                gui.inventorySlots,
+                recipe,
+            )
+        ) {
+            return null
+        }
+        return PlannerRecipeSelection(entries[recipe])
+    }
+
     private fun addEntries(matches: List<SceneEntry>) {
         for (entry in matches) {
             entries.add(entry)
             arecipes.add(object : CachedRecipe() {
 
                 override fun getResult(): PositionedStack? {
-                    return null
+                    if (!choosingForPlanner) {
+                        return null
+                    }
+                    return PositionedStack(
+                        entry.item(),
+                        3,
+                        ScenePreviewLayout.HEIGHT - 16,
+                    )
                 }
             })
         }
@@ -91,8 +163,15 @@ public class SceneRecipeHandler : TemplateRecipeHandler() {
         view?.scene?.close()
         activeRecipe = recipe
         view = try {
-            SceneView(entries[recipe].build())
-        } catch (failure: Exception) {
+            val entry = entries[recipe]
+            val usage = materialUsage(entry)
+            SceneView(entry.build(usage?.values.orEmpty())).also {
+                it.highlight(usage?.positions.orEmpty())
+            }
+        } catch (failure: Throwable) {
+            if (failure !is Exception && failure !is LinkageError) {
+                throw failure
+            }
             LogManager.getLogger("ImpactBlueprints").error(
                 "Cannot create scene ${entries[recipe].id}",
                 failure,
@@ -140,21 +219,28 @@ public class SceneRecipeHandler : TemplateRecipeHandler() {
 
     override fun drawForeground(recipe: Int) {
         val title = entries[recipe].item().displayName
-        val font = Minecraft.getMinecraft().fontRenderer
-        GuiDraw.drawString(
-            font.trimStringToWidth(
+        val font = GuiDraw.fontRenderer
+        val visibleTitle = if (font.getStringWidth(title) > ScenePreviewLayout.TITLE_WIDTH) {
+            val suffix = "${EnumChatFormatting.RESET}..."
+            val prefix = font.trimStringToWidth(
                 title,
-                ScenePreviewLayout.WIDTH - 6,
-            ),
-            3,
-            3,
+                ScenePreviewLayout.TITLE_WIDTH - font.getStringWidth(suffix),
+            ).trimEnd()
+            prefix + suffix
+        } else {
+            title
+        }
+        GuiDraw.drawString(
+            visibleTitle,
+            ScenePreviewLayout.TITLE_X,
+            ScenePreviewLayout.TITLE_Y,
             0x202020,
             false,
         )
         GuiDraw.drawStringC(
             font.trimStringToWidth(
                 viewerHint(),
-                ScenePreviewLayout.WIDTH - 6,
+                ScenePreviewLayout.WIDTH - if (choosingForPlanner) 44 else 6,
             ),
             ScenePreviewLayout.WIDTH / 2,
             ScenePreviewLayout.FOOTER_Y,
@@ -173,11 +259,23 @@ public class SceneRecipeHandler : TemplateRecipeHandler() {
             x = local.x,
             y = local.y,
         )
-        if (button != 0 || !inside) {
+        if (button != 0 || !inside ||
+            choosingForPlanner && local.y >= ScenePreviewLayout.FOOTER_Y && local.x !in 20..145
+        ) {
             return false
         }
         if (Loader.isModLoaded("modularui2")) {
-            SceneViewer.open(entries[recipe])
+            val entry = entries[recipe]
+            val usage = materialUsage(entry)
+            try {
+                SceneViewer.open(
+                    entry = entry,
+                    initialValues = usage?.values.orEmpty(),
+                    highlighted = usage?.positions.orEmpty(),
+                )
+            } catch (failure: LinkageError) {
+                LogManager.getLogger("ImpactBlueprints").warn("Cannot open scene ${entry.id}: $failure")
+            }
         }
         return true
     }
@@ -192,8 +290,13 @@ public class SceneRecipeHandler : TemplateRecipeHandler() {
             x = local.x,
             y = local.y,
         )
-        if (inside) {
+        val overTitle = local.x >= ScenePreviewLayout.TITLE_X &&
+            local.x < ScenePreviewLayout.TITLE_X + ScenePreviewLayout.TITLE_WIDTH &&
+            local.y in ScenePreviewLayout.TITLE_Y until ScenePreviewLayout.PREVIEW_Y
+        if (overTitle || inside) {
             currenttip.add(entries[recipe].item().displayName)
+        }
+        if (inside) {
             currenttip.add(viewerHint())
         }
         return currenttip
