@@ -17,7 +17,10 @@ public enum class Mixins(private val mixinBuilder: MixinBuilder) : IMixins {
                 "ae2fc.ItemBaseWirelessTerminalMixin",
                 "ae2fc.ItemWirelessUltraTerminalMixin",
             )
-            .addClientMixins("ae2fc.UltraTerminalButtonsMixin")
+            .addClientMixins(
+                "ae2fc.UltraTerminalButtonsMixin",
+                "ae2fc.GuiMEMonitorableMixin",
+            )
             .setApplyIf {
                 true
             },
