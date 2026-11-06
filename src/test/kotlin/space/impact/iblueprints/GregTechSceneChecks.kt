@@ -1203,6 +1203,24 @@ internal object GregTechSceneChecks {
         view.toggleMaterial(red)
         assertTrue(view.inspectedPositions().isEmpty())
         view.toggleMaterial(red)
+        val clear = view.materials.single {
+            original.stack.isItemEqual(it.stack)
+        }
+        view.toggleMaterial(
+            material = clear,
+            additive = true,
+        )
+        assertEquals(
+            both + clear.positions,
+            view.inspectedPositions(),
+        )
+        assertTrue(view.isMaterialSelected(red))
+        assertTrue(view.isMaterialSelected(clear))
+        view.toggleMaterial(
+            material = clear,
+            additive = true,
+        )
+        assertFalse(view.isMaterialSelected(clear))
         assertEquals(
             both,
             view.inspectedPositions(),

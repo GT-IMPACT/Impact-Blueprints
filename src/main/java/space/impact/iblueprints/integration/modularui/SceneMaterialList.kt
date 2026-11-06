@@ -7,6 +7,7 @@ import com.cleanroommc.modularui.api.widget.IWidget
 import com.cleanroommc.modularui.drawable.Rectangle
 import com.cleanroommc.modularui.widgets.ListWidget
 import cpw.mods.fml.common.Loader
+import net.minecraft.client.gui.GuiScreen
 import space.impact.iblueprints.scene.SceneView
 
 internal class SceneMaterialList(private val view: SceneView) : ListWidget<IWidget, SceneMaterialList>() {
@@ -59,7 +60,10 @@ internal class SceneMaterialList(private val view: SceneView) : ListWidget<IWidg
                         SceneActionButton(
                             label = label,
                             action = {
-                                view.toggleMaterial(material)
+                                view.toggleMaterial(
+                                    material = material,
+                                    additive = GuiScreen.isShiftKeyDown(),
+                                )
                             },
                         )
                             .left(24)

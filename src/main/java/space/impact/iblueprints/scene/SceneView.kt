@@ -319,19 +319,40 @@ public class SceneView(scene: BlockScene) {
     }
 
     public fun toggleMaterial(material: SceneMaterial) {
+        toggleMaterial(
+            material = material,
+            additive = false,
+        )
+    }
+
+    internal fun toggleMaterial(
+        material: SceneMaterial,
+        additive: Boolean,
+    ) {
         val positions = material.positions.toSet()
-        selection = if (selection.keys == positions) {
-            emptyMap()
-        } else {
-            positions.associateWith {
-                null
+        selection = when {
+            additive && isMaterialSelected(material) -> {
+                selection - positions
+            }
+            additive -> {
+                selection + (positions - selection.keys).associateWith {
+                    null
+                }
+            }
+            selection.keys == positions -> {
+                emptyMap()
+            }
+            else -> {
+                positions.associateWith {
+                    null
+                }
             }
         }
         highlighted = emptySet()
     }
 
     public fun isMaterialSelected(material: SceneMaterial): Boolean {
-        return selection.isNotEmpty() && selection.keys == material.positions.toSet()
+        return material.positions.isNotEmpty() && selection.keys.containsAll(material.positions)
     }
 
     internal fun highlightedPositions(): List<ScenePosition> {
