@@ -3,6 +3,7 @@ package space.impact.iblueprints.integration.modularui
 import com.cleanroommc.modularui.api.drawable.IKey
 import com.cleanroommc.modularui.drawable.Rectangle
 import com.cleanroommc.modularui.factory.ClientGUI
+import com.cleanroommc.modularui.screen.ModularContainer
 import com.cleanroommc.modularui.screen.ModularPanel
 import com.cleanroommc.modularui.screen.ModularScreen
 import com.cleanroommc.modularui.screen.UISettings
@@ -66,14 +67,20 @@ public object SceneViewer {
                 context.setParentScreen(parent)
             }
         }
+        screen.openParentOnClose(true)
+        screen.context.setSettings(settings)
+        val container = ModularContainer()
+        container.constructClientOnly()
+        val gui = SceneViewerGui(
+            container = container,
+            screen = screen,
+            parentContainer = Minecraft.getMinecraft().thePlayer.openContainer,
+        )
         tracePlannerStep(
             step = "viewer.open",
             details = "entry=${entry.id} editing=${onLayoutChanged != null}",
         ) {
-            ClientGUI.open(
-                screen.openParentOnClose(true),
-                settings,
-            )
+            ClientGUI.open(gui)
         }
     }
 

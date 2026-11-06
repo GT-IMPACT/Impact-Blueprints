@@ -38,19 +38,22 @@ internal class SceneMaterialList(private val view: SceneView) : ListWidget<IWidg
             }
             child(
                 SceneMaterialRow()
-                    .height(24)
+                    .height(22)
                     .widthRel(1f)
                     .child(
-                        SceneMaterialSlot(material.stack).left(2).top(2).size(20)
-                            .onMouseTapped { button ->
-                                if (button != 0 || !Loader.isModLoaded("NotEnoughItems")) {
-                                    return@onMouseTapped false
+                        SceneMaterialSlot(
+                            stack = material.stack,
+                            onTap = { button ->
+                                if (button == 0 && Loader.isModLoaded("NotEnoughItems")) {
+                                    GuiCraftingRecipe.openRecipeGui(
+                                        "item",
+                                        material.stack.copy(),
+                                    )
+                                } else {
+                                    false
                                 }
-                                GuiCraftingRecipe.openRecipeGui(
-                                    "item",
-                                    material.stack.copy(),
-                                )
                             },
+                        ).left(2).top(2),
                     )
                     .child(
                         SceneActionButton(
@@ -59,9 +62,9 @@ internal class SceneMaterialList(private val view: SceneView) : ListWidget<IWidg
                                 view.toggleMaterial(material)
                             },
                         )
-                            .left(26)
+                            .left(24)
                             .right(0)
-                            .height(24)
+                            .height(22)
                             .background(IDrawable.NONE)
                             .hoverBackground(Rectangle().color(0x30FFFFFF)),
                     ),

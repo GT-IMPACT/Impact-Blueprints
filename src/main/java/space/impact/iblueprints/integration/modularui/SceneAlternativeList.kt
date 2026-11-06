@@ -180,9 +180,9 @@ internal class SceneAlternativeList(
         val rows = stacks.chunked(5)
         for ((rowIndex, rowStacks) in rows.withIndex()) {
             val height = if (rowIndex == rows.lastIndex) {
-                28
+                26
             } else {
-                22
+                20
             }
             val row = SceneMaterialRow().height(height).widthRel(1f)
             for ((index, stack) in rowStacks.withIndex()) {
@@ -220,7 +220,7 @@ internal class SceneAlternativeList(
                     SceneMaterialSlot(
                         stack = stack,
                         replace = replace,
-                    ).left(index * 22).top(0).size(20),
+                    ).left(index * 20).top(0),
                 )
             }
             child(row)

@@ -48,14 +48,27 @@ internal class PlannerSession(
         plan: NBTTagCompound,
     ) {
         val details = "recipe=${state.recipe} selection=$selection edit=${editSequence + 1}"
-        val ready = tracePlannerStep(
+        val rejection = tracePlannerStep(
             step = "client.prepareEdit",
             details = details,
         ) {
-            isOpen() && selection == state.selection && checkSize(plan)
+            when {
+                !isOpen() -> {
+                    "inactive container window=${player().openContainer.windowId}"
+                }
+                selection != state.selection -> {
+                    "selection changed current=${state.selection}"
+                }
+                !checkSize(plan) -> {
+                    "invalid or oversized plan"
+                }
+                else -> {
+                    null
+                }
+            }
         }
-        if (!ready) {
-            logPlannerTrace("client.prepareEdit rejected $details")
+        if (rejection != null) {
+            logPlannerTrace("client.prepareEdit rejected reason=$rejection $details")
             return
         }
         pendingPlan = plan

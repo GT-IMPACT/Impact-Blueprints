@@ -1,50 +1,66 @@
 package space.impact.iblueprints.integration.modularui
 
-import com.cleanroommc.modularui.api.IThemeApi
-import com.cleanroommc.modularui.drawable.ItemDrawable
-import com.cleanroommc.modularui.screen.viewport.ModularGuiContext
-import com.cleanroommc.modularui.theme.WidgetThemeEntry
-import com.cleanroommc.modularui.widgets.ButtonWidget
+import com.cleanroommc.modularui.api.widget.Interactable.Result
+import com.cleanroommc.modularui.screen.RichTooltip
+import com.cleanroommc.modularui.utils.item.ItemStackHandler
+import com.cleanroommc.modularui.widgets.slot.ItemSlot
+import com.cleanroommc.modularui.widgets.slot.ModularSlot
 import net.minecraft.item.ItemStack
 import net.minecraft.util.StatCollector
 
 internal class SceneMaterialSlot(
     stack: ItemStack,
-    replace: (() -> Boolean)? = null,
-) : ButtonWidget<SceneMaterialSlot>() {
-
-    private val icon = ItemDrawable(stack)
+    private val replace: (() -> Boolean)? = null,
+    private val onTap: ((Int) -> Boolean)? = null,
+) : ItemSlot() {
 
     init {
-        widgetTheme(IThemeApi.ITEM_SLOT)
-        tooltipDynamic {
-            it.addFromItem(stack)
-            if (replace != null) {
-                it.addLine(StatCollector.translateToLocal("iblueprints.variants.replace"))
-            }
-        }
+        val inventory = ItemStackHandler(1)
+        inventory.setStackInSlot(
+            0,
+            stack.copy(),
+        )
+        slot(ModularSlot(
+            inventory,
+            0,
+        ).canPut(false).canTake(false).canDragInto(false))
+    }
+
+    override fun buildTooltip(
+        stack: ItemStack?,
+        tooltip: RichTooltip,
+    ) {
+        super.buildTooltip(
+            stack,
+            tooltip,
+        )
         if (replace != null) {
-            onMousePressed { button ->
-                button == 0 && replace()
-            }
+            tooltip.addLine(StatCollector.translateToLocal("iblueprints.variants.replace"))
         }
     }
 
-    override fun draw(
-        context: ModularGuiContext,
-        widgetTheme: WidgetThemeEntry<*>,
+    override fun onMousePressed(mouseButton: Int): Result {
+        if (mouseButton == 0 && replace?.invoke() == true) {
+            return Result.SUCCESS
+        }
+        return Result.ACCEPT
+    }
+
+    override fun onMouseRelease(mouseButton: Int): Boolean {
+        return true
+    }
+
+    override fun onMouseTapped(mouseButton: Int): Result {
+        return if (onTap?.invoke(mouseButton) == true) {
+            Result.SUCCESS
+        } else {
+            Result.IGNORE
+        }
+    }
+
+    override fun onMouseDrag(
+        mouseButton: Int,
+        timeSinceClick: Long,
     ) {
-        super.draw(
-            context,
-            widgetTheme,
-        )
-        icon.draw(
-            context,
-            1,
-            1,
-            18,
-            18,
-            widgetTheme.theme,
-        )
     }
 }

@@ -40,6 +40,15 @@ val integrationRuntime = providers.gradleProperty("sceneIntegrations").map(Strin
 val angelicaRuntime = providers.gradleProperty("angelica").map(String::toBoolean).orElse(true)
 
 dependencies {
+    // GuiContainerWrapper exposes these optional ModularUI interfaces in its superclass hierarchy.
+    val viewerInterfaces = listOf(
+        "com.github.GTNewHorizons:lwjgl3ify:3.0.34:api",
+        "curse.maven:neverenoughanimation-1062347:7664003-sources-7663978",
+    )
+    viewerInterfaces.forEach {
+        compileOnly(it) { isTransitive = false }
+        testImplementation(it) { isTransitive = false }
+    }
     api(libs.impact.forgelin)
     integrationMods.forEach {
         compileOnly(it) { isTransitive = false }
