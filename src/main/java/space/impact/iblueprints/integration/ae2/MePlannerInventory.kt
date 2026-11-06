@@ -16,11 +16,11 @@ internal class MePlannerInventory(
     stacks.slots,
 ) {
 
-    constructor(part: MeBlueprintPlannerPart) : this(
+    constructor(part: IMeBlueprintPlannerHost) : this(
         title = "iblueprints.planner.me_title",
         stacks = part.planner.inventory,
         onChanged = {
-            part.host?.markForSave()
+            part.markPlannerDirty()
         },
         accepts = { slot, stack ->
             when (slot) {

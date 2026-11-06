@@ -25,6 +25,7 @@ import space.impact.iblueprints.integration.ae2.BlueprintProviderTile
 import space.impact.iblueprints.integration.ae2.MeBlueprintPlannerItem
 import space.impact.iblueprints.integration.ae2.MePlannerGuiFactory
 import space.impact.iblueprints.integration.ae2.StructurePatternItem
+import space.impact.iblueprints.integration.ae2.WirelessPlannerIntegration
 import space.impact.iblueprints.integration.structures.BlueprintWorldUse
 import space.impact.iblueprints.integration.structures.ProjectorChannelNetwork
 import space.impact.iblueprints.item.BlankBlueprintItem
@@ -116,6 +117,9 @@ open class CommonProxy {
                     ImpactBlueprintsMod,
                     MePlannerGuiFactory,
                 )
+                if (Loader.isModLoaded("ae2fc") && Loader.isModLoaded("impactapi")) {
+                    WirelessPlannerIntegration.register()
+                }
             }
         }
         if (Loader.isModLoaded("impactapi")) {

@@ -1,6 +1,5 @@
 package space.impact.iblueprints.integration.ae2
 
-import appeng.container.ContainerOpenContext
 import appeng.container.PrimaryGui
 import appeng.container.implementations.ContainerMEMonitorable
 import appeng.container.slot.AppEngSlot
@@ -22,7 +21,7 @@ import java.io.IOException
 
 internal class MeBlueprintPlannerContainer(
     inventory: InventoryPlayer,
-    private val part: MeBlueprintPlannerPart,
+    private val part: IMeBlueprintPlannerHost,
 ) : ContainerMEMonitorable(
     inventory,
     part,
@@ -95,14 +94,7 @@ internal class MeBlueprintPlannerContainer(
     }
 
     init {
-        val tile = requireNotNull(part.tile)
-        openContext = ContainerOpenContext(part).apply {
-            setWorld(tile.worldObj)
-            side = part.side
-            setX(tile.xCoord)
-            setY(tile.yCoord)
-            setZ(tile.zCoord)
-        }
+        openContext = part.plannerContext()
         bindPlayerInventory(
             inventory,
             0,
@@ -144,21 +136,7 @@ internal class MeBlueprintPlannerContainer(
     }
 
     override fun createPrimaryGui(): PrimaryGui {
-        return object : PrimaryGui(
-            null,
-            part.primaryGuiIcon,
-            part.tile,
-            part.side,
-        ) {
-            override fun open(player: EntityPlayer) {
-                if (part.accessible(player)) {
-                    MePlannerGuiFactory.open(
-                        part = part,
-                        player = player,
-                    )
-                }
-            }
-        }
+        return part.plannerPrimaryGui()
     }
 
     private fun MutableMap<PlannerSlotHint, AppEngSlot>.addPlannerSlot(

@@ -9,6 +9,7 @@ impactMod {
     modGroup.set("space.impact.iblueprints")
     mavenGroup.set("space.impact")
     mavenUrl.set("https://maven.accident.space/repository/maven-releases/")
+    usesMixins.set(true)
 }
 
 val modId = impactMod.modId.get()
@@ -47,6 +48,7 @@ dependencies {
         }
     }
     compileOnly("com.github.GTNewHorizons:CodeChickenCore:1.4.22:dev") { isTransitive = false }
+    compileOnly("com.github.GTNewHorizons:AE2FluidCraft-Rework:1.5.114-gtnh:dev") { isTransitive = false }
     compileOnly("com.github.GTNewHorizons:modularui:1.1.24:dev") { isTransitive = false }
     compileOnly("net.industrial-craft:industrialcraft-2:2.2.828-experimental:dev") { isTransitive = false }
     compileOnly("com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-1082-GTNH:dev") { isTransitive = false }

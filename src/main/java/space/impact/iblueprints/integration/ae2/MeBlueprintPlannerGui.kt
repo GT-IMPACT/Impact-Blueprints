@@ -24,7 +24,7 @@ import java.util.Locale
 
 internal class MeBlueprintPlannerGui(
     inventory: InventoryPlayer,
-    part: MeBlueprintPlannerPart,
+    part: IMeBlueprintPlannerHost,
     private val terminal: MeBlueprintPlannerContainer = MeBlueprintPlannerContainer(
         inventory = inventory,
         part = part,

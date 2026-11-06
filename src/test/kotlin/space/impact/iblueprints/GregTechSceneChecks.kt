@@ -1721,6 +1721,7 @@ internal object GregTechSceneChecks {
     }
 
     private fun checkMePlanner(plan: NBTTagCompound) {
+        WirelessPlannerChecks.check(plan)
         val state = PlannerState(
             networked = true,
             world = {

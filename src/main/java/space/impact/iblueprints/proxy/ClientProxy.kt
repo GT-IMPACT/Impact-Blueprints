@@ -11,6 +11,7 @@ import net.minecraftforge.common.MinecraftForge
 import space.impact.iblueprints.integration.ae2.MeBlueprintPlannerItem
 import space.impact.iblueprints.integration.ae2.PlannerPatterns
 import space.impact.iblueprints.integration.ae2.StructurePatternItem
+import space.impact.iblueprints.integration.ae2.WirelessPlannerButton
 import space.impact.iblueprints.integration.gregtech.GregTechScenes
 import space.impact.iblueprints.integration.nei.SceneHandlerInfo
 import space.impact.iblueprints.integration.nei.SceneCatalysts
@@ -27,6 +28,9 @@ public class ClientProxy : CommonProxy() {
         )
         if (Loader.isModLoaded("modularui2") && Loader.isModLoaded("appliedenergistics2")) {
             MeBlueprintPlannerItem.registerRenderer()
+            if (Loader.isModLoaded("ae2fc") && Loader.isModLoaded("impactapi")) {
+                MinecraftForge.EVENT_BUS.register(WirelessPlannerButton)
+            }
             MinecraftForgeClient.registerItemRenderer(
                 StructurePatternItem,
                 StructureBlueprintRenderer(PlannerPatterns::isOrder),

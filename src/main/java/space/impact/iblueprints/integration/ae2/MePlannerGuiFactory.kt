@@ -2,6 +2,7 @@ package space.impact.iblueprints.integration.ae2
 
 import appeng.api.parts.IPartHost
 import cpw.mods.fml.common.network.IGuiHandler
+import cpw.mods.fml.common.Loader
 import net.minecraft.entity.player.EntityPlayer
 import net.minecraft.world.World
 import net.minecraftforge.common.util.ForgeDirection
@@ -48,6 +49,19 @@ internal object MePlannerGuiFactory : IGuiHandler {
         y: Int,
         z: Int,
     ): Any? {
+        if (id == WirelessPlannerIntegration.GUI_ID && Loader.isModLoaded("ae2fc")) {
+            val host = WirelessPlannerIntegration.createHost(
+                player = player,
+                slot = x,
+            ) ?: return null
+            WirelessPlannerMode.select(host.itemStack)
+            player.inventory.markDirty()
+            player.inventoryContainer.detectAndSendChanges()
+            return MeBlueprintPlannerContainer(
+                inventory = player.inventory,
+                part = host,
+            )
+        }
         if (id == PROVIDER_GUI) {
             val provider = findProvider(
                 player = player,
@@ -85,6 +99,16 @@ internal object MePlannerGuiFactory : IGuiHandler {
         y: Int,
         z: Int,
     ): Any? {
+        if (id == WirelessPlannerIntegration.GUI_ID && Loader.isModLoaded("ae2fc")) {
+            val host = WirelessPlannerIntegration.createHost(
+                player = player,
+                slot = x,
+            ) ?: return null
+            return MeBlueprintPlannerGui(
+                inventory = player.inventory,
+                part = host,
+            )
+        }
         if (id == PROVIDER_GUI) {
             val provider = findProvider(
                 player = player,

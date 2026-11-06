@@ -3,6 +3,8 @@ package space.impact.iblueprints.integration.ae2
 import appeng.api.config.SecurityPermissions
 import appeng.api.parts.IPartRenderHelper
 import appeng.client.texture.CableBusTextures
+import appeng.container.ContainerOpenContext
+import appeng.container.PrimaryGui
 import appeng.me.GridAccessException
 import appeng.parts.reporting.AbstractPartTerminal
 import appeng.util.Platform
@@ -19,9 +21,9 @@ import space.impact.iblueprints.planner.PlannerState
 import space.impact.iblueprints.planner.logPlannerTrace
 import space.impact.iblueprints.planner.tracePlannerStep
 
-internal class MeBlueprintPlannerPart(stack: ItemStack) : AbstractPartTerminal(stack) {
+internal class MeBlueprintPlannerPart(stack: ItemStack) : AbstractPartTerminal(stack), IMeBlueprintPlannerHost {
 
-    internal val planner = PlannerState(
+    override val planner = PlannerState(
         networked = true,
         world = {
             tile?.worldObj
@@ -57,7 +59,40 @@ internal class MeBlueprintPlannerPart(stack: ItemStack) : AbstractPartTerminal(s
         return true
     }
 
-    internal fun accessible(player: EntityPlayer): Boolean {
+    override fun markPlannerDirty() {
+        host?.markForSave()
+    }
+
+    override fun plannerContext(): ContainerOpenContext {
+        val hostTile = requireNotNull(tile)
+        return ContainerOpenContext(this).apply {
+            setWorld(hostTile.worldObj)
+            side = this@MeBlueprintPlannerPart.side
+            setX(hostTile.xCoord)
+            setY(hostTile.yCoord)
+            setZ(hostTile.zCoord)
+        }
+    }
+
+    override fun plannerPrimaryGui(): PrimaryGui {
+        return object : PrimaryGui(
+            null,
+            primaryGuiIcon,
+            tile,
+            side,
+        ) {
+            override fun open(player: EntityPlayer) {
+                if (accessible(player)) {
+                    MePlannerGuiFactory.open(
+                        part = this@MeBlueprintPlannerPart,
+                        player = player,
+                    )
+                }
+            }
+        }
+    }
+
+    override fun accessible(player: EntityPlayer): Boolean {
         val hostTile = tile ?: return false
         if (hostTile.isInvalid || hostTile.worldObj !== player.worldObj || host?.getPart(side) !== this) {
             return false
