@@ -35,6 +35,39 @@ internal class GregTechHatchChoices(
     }
     private val unavailableHatches = IdentityHashMap<IStructureElement<Any>, MutableSet<GT_MetaTileEntity_Hatch>>()
 
+    internal fun initializeHatchTextures() {
+        val probe = scene.world.copyForProbe()
+        try {
+            val controller = probe.getTileEntity(
+                x = origin.x,
+                y = origin.y,
+                z = origin.z,
+            ) as? IGregTechTileEntity ?: return
+            val machine = controller.metaTileEntity ?: return
+            for ((position, element) in elements) {
+                if (hatchTile(position) == null) {
+                    continue
+                }
+                // Survival placement installs the hatch; the structure check assigns its casing texture.
+                if (element.check(
+                        machine,
+                        probe,
+                        position.x,
+                        position.y,
+                        position.z,
+                    )
+                ) {
+                    scene.world.setBlockState(
+                        position = position,
+                        state = checkNotNull(probe.blockState(position)),
+                    )
+                }
+            }
+        } finally {
+            probe.clear()
+        }
+    }
+
     internal fun track(
         position: ScenePosition,
         element: IStructureElement<Any>,

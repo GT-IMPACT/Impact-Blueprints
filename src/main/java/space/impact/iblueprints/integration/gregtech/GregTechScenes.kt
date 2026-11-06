@@ -263,6 +263,7 @@ internal object GregTechScenes {
                         trigger = trigger,
                     )
                     collector.finish(hatchChoices::track)
+                    hatchChoices.initializeHatchTextures()
                     scene.simulation = hatchChoices
                 } finally {
                     ImpactStructures.disableInstrument()

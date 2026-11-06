@@ -498,6 +498,19 @@ internal object GregTechSceneChecks {
                 2,
                 hatchCount(exchanger),
             )
+            for (position in exchanger.positions()) {
+                val tile = exchanger.world.getTileEntity(
+                    x = position.x,
+                    y = position.y,
+                    z = position.z,
+                ) as? BaseMetaTileEntity ?: continue
+                val hatch = tile.metaTileEntity as? GT_MetaTileEntity_Hatch ?: continue
+                assertEquals(
+                    "Automatically placed hatches must receive their structure casing texture",
+                    Casings.STABLE_TITANIUM.textureId,
+                    (hatch.texturePage.toInt() shl 7) or hatch.updateData.toInt(),
+                )
+            }
             checkDefaultHatchFacing(exchanger)
         }
         checkReactorCasings(ItemStack(
