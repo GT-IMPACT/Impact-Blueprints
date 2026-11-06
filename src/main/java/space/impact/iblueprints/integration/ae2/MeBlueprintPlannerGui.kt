@@ -151,10 +151,6 @@ internal class MeBlueprintPlannerGui(
         }
     }
 
-    override fun getMaxRows(): Int {
-        return super.getMaxRows().coerceAtMost(6)
-    }
-
     override fun getGuiDisplayName(name: String): String {
         val title = super.getGuiDisplayName(name)
         val availableWidth = searchField.xPos() - guiLeft - 8 - 4
