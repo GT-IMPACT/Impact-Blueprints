@@ -141,6 +141,7 @@ internal object GregTechSceneChecks {
         checkWorldPlacement()
         checkRegisteredInventoryPlacement(serverPlayer)
         checkSceneTileCleanup()
+        checkSceneTileCleanupFailures()
         checkPlannerTraceConfig()
         GregTech_API.sMachineFile = GT_Config(Configuration(File("build/test-config/scene-machines.cfg")))
         GregTech_API.sBlockCasings2 = Blocks.wool
@@ -863,6 +864,87 @@ internal object GregTechSceneChecks {
         world.clear()
         assertTrue(tile.isInvalid)
         assertFalse(world.isRemote)
+    }
+
+    private fun checkSceneTileCleanupFailures() {
+        val scene = BlockScene("Failing removal hook")
+        val world = scene.world
+        world.isRemote = false
+        var removalCalls = 0
+        val failingTile = object : TileEntity() {
+
+            override fun invalidate() {
+                assertTrue(worldObj.isRemote)
+                removalCalls++
+                // TecTech removal hooks can fail before TileEntity.invalidate() is reached.
+                throw NullPointerException("Uninitialized preview machine")
+            }
+        }
+        world.setTileEntity(
+            x = 0,
+            y = 64,
+            z = 0,
+            tile = failingTile,
+        )
+        world.removeTileEntity(
+            x = 0,
+            y = 64,
+            z = 0,
+        )
+        assertEquals(
+            null,
+            world.getTileEntity(
+                x = 0,
+                y = 64,
+                z = 0,
+            ),
+        )
+        assertFalse(world.isRemote)
+
+        world.setTileEntity(
+            x = 0,
+            y = 64,
+            z = 0,
+            tile = failingTile,
+        )
+        val replacement = TileEntity()
+        world.setTileEntity(
+            x = 0,
+            y = 64,
+            z = 0,
+            tile = replacement,
+        )
+        scene.block(
+            position = ScenePosition(
+                x = 1,
+                y = 64,
+                z = 0,
+            ),
+            block = Blocks.stone,
+        )
+        world.setTileEntity(
+            x = 1,
+            y = 64,
+            z = 0,
+            tile = failingTile,
+        )
+        scene.close()
+        assertTrue(replacement.isInvalid)
+        assertTrue(scene.positions().isEmpty())
+        assertEquals(
+            null,
+            world.getTileEntity(
+                x = 1,
+                y = 64,
+                z = 0,
+            ),
+        )
+        assertFalse(world.isRemote)
+        scene.close()
+        assertEquals(
+            3,
+            removalCalls,
+        )
     }
 
     private fun checkWorldPlacement() {

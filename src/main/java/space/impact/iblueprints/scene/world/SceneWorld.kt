@@ -216,12 +216,16 @@ internal class SceneWorld : World(
         try {
             tile.invalidate()
         } catch (failure: Throwable) {
+            if (failure !is Exception && failure !is LinkageError) {
+                throw failure
+            }
+            // Unticked preview machines may have incomplete state required by addon removal hooks.
+            // Discard the tile even if its hook fails so the remaining scene can still be released.
             logPlannerTraceFailure(
                 message = "scene.invalidateTile failed tile=${tile.javaClass.name} " +
                     "position=${tile.xCoord},${tile.yCoord},${tile.zCoord} previousRemote=$previousSide",
                 failure = failure,
             )
-            throw failure
         } finally {
             isRemote = previousSide
         }
