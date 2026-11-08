@@ -790,6 +790,7 @@ internal object GregTechSceneChecks {
             "test.alternatives.custom",
             SceneAlternativeGroups.group(fluidOutput),
         )
+        SceneAlternativeGroupPriorityChecks.run(fluidOutput)
     }
 
     private fun checkPlannerTraceConfig() {

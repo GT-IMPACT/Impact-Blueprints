@@ -120,11 +120,12 @@ internal class SceneAlternativeList(
         val groups = sorted.groupBy(SceneAlternativeGroups::group)
         val words = lastQuery.split(WHITESPACE).filter(String::isNotEmpty)
         var hasResults = false
-        for ((key, alternatives) in groups.entries.sortedWith(
-            compareBy<Map.Entry<String, List<ItemStack>>> { it.key == SceneAlternativeGroups.OTHER }.thenBy {
-                StatCollector.translateToLocal(it.key)
-            },
-        )) {
+        for ((key, alternatives) in groups.entries.sortedWith { first, second ->
+            SceneAlternativeGroups.compareGroups(
+                first = first.key,
+                second = second.key,
+            )
+        }) {
             val visible = if (words.isEmpty()) {
                 alternatives
             } else {
