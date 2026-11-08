@@ -179,6 +179,12 @@ public class SceneRecipeHandler : TemplateRecipeHandler() {
             val entry = entries[recipe]
             val usage = materialUsage(entry)
             SceneView(entry.build(usage?.values.orEmpty())).also {
+                // A visible preview must be searchable even while background indexing is still pending.
+                SceneCatalysts.indexPreview(
+                    entry = entry,
+                    materials = it.materials,
+                    values = usage?.values.orEmpty(),
+                )
                 it.highlight(usage?.positions.orEmpty())
             }
         } catch (failure: Throwable) {

@@ -321,6 +321,7 @@ public class NeiPageIntegrationTest {
             checkPlannerSelection(controller)
             MinecraftForge.EVENT_BUS.unregister(SceneHandlerInfo)
             checkCatalogueAndCatalysts(controller)
+            NeiMaterialIndexChecks.run()
             FMLCommonHandler.instance().bus().unregister(SceneCatalysts)
             val serverPlayerConstructor = factoryClass.getMethod(
                 "newConstructorForSerialization",

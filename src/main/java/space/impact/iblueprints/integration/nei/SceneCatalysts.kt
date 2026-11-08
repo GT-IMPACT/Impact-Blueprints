@@ -9,6 +9,7 @@ import net.minecraft.item.ItemStack
 import org.apache.logging.log4j.LogManager
 import space.impact.iblueprints.api.SceneEntry
 import space.impact.iblueprints.api.SceneRegistry
+import space.impact.iblueprints.scene.SceneMaterial
 import space.impact.iblueprints.scene.ScenePosition
 
 /** NEI's global catalyst table is per category. This changes only the current screen's native panel. */
@@ -28,8 +29,19 @@ internal object SceneCatalysts {
         val entries = SceneRegistry.all()
         materialsByScene = emptyMap()
         pendingIndex = sequence {
+            // Publish every preview's blocks before probing hatches or enumerating channel combinations.
             for (entry in entries) {
-                indexMaterials(entry)
+                indexMaterials(
+                    entry = entry,
+                    includeAlternatives = false,
+                )
+                yield(Unit)
+            }
+            for (entry in entries) {
+                indexMaterials(
+                    entry = entry,
+                    includeAlternatives = true,
+                )
                 yield(Unit)
             }
         }.iterator()
@@ -49,13 +61,18 @@ internal object SceneCatalysts {
     }
 
     // Resume on the client thread and publish immutable results for NEI's query workers.
-    private suspend fun SequenceScope<Unit>.indexMaterials(entry: SceneEntry) {
+    private suspend fun SequenceScope<Unit>.indexMaterials(
+        entry: SceneEntry,
+        includeAlternatives: Boolean,
+    ) {
         val controller = entry.item()
-        val materials = mutableListOf<SceneMaterialUsage>()
-        val values = linkedMapOf<String, Int>()
+        val materials = materialsByScene[entry].orEmpty().toMutableList()
+        val values = entry.channels.associateTo(linkedMapOf()) {
+            it.id to it.normalize(it.minimum)
+        }
 
         suspend fun SequenceScope<Unit>.indexConfiguration(channelIndex: Int) {
-            if (channelIndex < entry.channels.size) {
+            if (includeAlternatives && channelIndex < entry.channels.size) {
                 val channel = entry.channels[channelIndex]
                 for (value in (channel.minimum..channel.maximum).asSequence().map(channel::normalize).distinct()) {
                     values[channel.id] = value
@@ -68,8 +85,11 @@ internal object SceneCatalysts {
                     val positionsByStack = linkedMapOf<ItemStack, MutableSet<ScenePosition>>()
                     for (position in scene.positions().toSet() + scene.elements.keys) {
                         yield(Unit)
-                        val stacks = listOfNotNull(scene.item(position)) +
+                        val stacks = listOfNotNull(scene.item(position)) + if (includeAlternatives) {
                             scene.elements[position]?.inspectionAlternatives().orEmpty()
+                        } else {
+                            emptyList()
+                        }
                         for (stack in stacks) {
                             if (sameStack(
                                     first = controller,
@@ -102,6 +122,10 @@ internal object SceneCatalysts {
                             positions = positions.toSet(),
                         ))
                     }
+                    publishMaterials(
+                        entry = entry,
+                        materials = materials,
+                    )
                 }
             } catch (failure: Throwable) {
                 if (failure !is Exception && failure !is LinkageError) {
@@ -118,7 +142,48 @@ internal object SceneCatalysts {
         } catch (failure: LinkageError) {
             LogManager.getLogger("ImpactBlueprints").warn("Cannot enumerate channels for ${entry.id}: $failure")
         }
-        materialsByScene = materialsByScene + (entry to materials.toList())
+    }
+
+    internal fun indexPreview(
+        entry: SceneEntry,
+        materials: List<SceneMaterial>,
+        values: Map<String, Int>,
+    ) {
+        val controller = entry.item()
+        val configuration = entry.channels.associate {
+            it.id to it.normalize(values[it.id] ?: it.minimum)
+        }
+        publishMaterials(
+            entry = entry,
+            materials = materials.filterNot {
+                sameStack(
+                    first = controller,
+                    second = it.stack,
+                )
+            }.map {
+                SceneMaterialUsage(
+                    stack = it.stack.copy(),
+                    values = configuration,
+                    positions = it.positions.toSet(),
+                )
+            },
+        )
+    }
+
+    private fun publishMaterials(
+        entry: SceneEntry,
+        materials: List<SceneMaterialUsage>,
+    ) {
+        val existing = materialsByScene[entry].orEmpty()
+        val additions = materials.filter { candidate ->
+            existing.none {
+                sameStack(
+                    first = it.stack,
+                    second = candidate.stack,
+                )
+            }
+        }
+        materialsByScene = materialsByScene + (entry to existing + additions)
     }
 
     private fun sameStack(
