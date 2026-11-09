@@ -6,6 +6,7 @@ import com.cleanroommc.modularui.screen.UISettings
 import com.cleanroommc.modularui.utils.item.ItemStackHandler
 import com.cleanroommc.modularui.value.sync.ModularSyncManager
 import com.cleanroommc.modularui.value.sync.PanelSyncManager
+import com.cleanroommc.modularui.widget.WidgetTree
 import com.cleanroommc.modularui.widgets.slot.ItemSlot
 import cpw.mods.fml.common.DummyModContainer
 import cpw.mods.fml.common.Loader
@@ -73,6 +74,10 @@ import space.impact.iblueprints.integration.ae2.StructurePatternItem
 import space.impact.iblueprints.integration.gregtech.BlueprintHatch
 import space.impact.iblueprints.integration.nei.SceneCatalysts
 import space.impact.iblueprints.integration.nei.SceneRecipeHandler
+import space.impact.iblueprints.integration.modularui.SceneAlternativeList
+import space.impact.iblueprints.integration.modularui.SceneMaterialSlot
+import space.impact.iblueprints.integration.modularui.SceneViewer
+import space.impact.iblueprints.integration.modularui.SceneWidget
 import space.impact.iblueprints.integration.structures.SaveProjectorChannels
 import space.impact.iblueprints.integration.structures.SaveStructureBlueprint
 import space.impact.iblueprints.integration.structures.SceneBlueprint
@@ -90,6 +95,7 @@ import space.impact.iblueprints.planner.loadPlannerTraceConfig
 import space.impact.iblueprints.planner.plannerTraceEnabled
 import space.impact.iblueprints.planner.tracePlannerStep
 import space.impact.iblueprints.api.SceneRegistry
+import space.impact.iblueprints.api.SceneEntry
 import space.impact.iblueprints.api.SceneAlternativeGroups
 import space.impact.iblueprints.scene.BlockScene
 import space.impact.iblueprints.scene.SceneBlockHit
@@ -112,6 +118,7 @@ import space.impact.structures.util.InventoryUtility
 import java.io.File
 import java.nio.file.Files
 import java.lang.reflect.Proxy
+import java.util.function.Supplier
 
 internal object GregTechSceneChecks {
 
@@ -1650,6 +1657,62 @@ internal object GregTechSceneChecks {
         )
     }
 
+    private fun checkViewerPanel(
+        controller: ItemStack,
+        plan: NBTTagCompound,
+        hatchPosition: ScenePosition,
+    ) {
+        val channels = SceneBlueprint.channels(plan)
+        val panel = SceneViewer.createPanel(
+            entry = SceneEntry(
+                id = "test:simulator",
+                item = controller,
+                factory = Supplier {
+                    GregTechScenes.create(
+                        controller = controller,
+                        values = channels,
+                    )
+                },
+            ),
+            initialValues = channels,
+            savedPlan = plan,
+            onLayoutChanged = {},
+        )
+        val view = panel.children.filterIsInstance<SceneWidget>().single().view
+        try {
+            val materials = WidgetTree.flatListByType(
+                panel,
+                SceneMaterialSlot::class.java,
+            )
+            assertTrue(materials.isNotEmpty())
+            // SecondaryPanel performs this same check before opening the simulator.
+            assertFalse(WidgetTree.hasSyncedValues(panel))
+
+            view.selectBlock(
+                hit = SceneBlockHit(
+                    position = hatchPosition,
+                    face = ForgeDirection.UP,
+                ),
+                additive = false,
+            )
+            val alternatives = SceneAlternativeList(
+                view = view,
+                query = {
+                    ""
+                },
+                onChanged = {},
+            )
+            panel.child(alternatives)
+            assertTrue(WidgetTree.flatListByType(
+                alternatives,
+                SceneMaterialSlot::class.java,
+            ).isNotEmpty())
+            assertFalse(WidgetTree.hasSyncedValues(panel))
+        } finally {
+            view.scene.close()
+        }
+    }
+
     private fun checkPlanner(
         scene: BlockScene,
         plan: NBTTagCompound,
@@ -1657,6 +1720,11 @@ internal object GregTechSceneChecks {
         hatchFacing: ForgeDirection,
     ) {
         val controller = requireNotNull(scene.item(requireNotNull(scene.simulation).origin))
+        checkViewerPanel(
+            controller = controller,
+            plan = plan,
+            hatchPosition = hatchPosition,
+        )
         val tile = BlueprintPlannerTile()
         val planner = tile.planner
         assertEquals(

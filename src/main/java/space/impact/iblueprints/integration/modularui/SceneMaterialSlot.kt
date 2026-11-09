@@ -1,10 +1,14 @@
 package space.impact.iblueprints.integration.modularui
 
+import com.cleanroommc.modularui.ModularUI
+import com.cleanroommc.modularui.api.widget.Interactable
 import com.cleanroommc.modularui.api.widget.Interactable.Result
-import com.cleanroommc.modularui.screen.RichTooltip
-import com.cleanroommc.modularui.utils.item.ItemStackHandler
-import com.cleanroommc.modularui.widgets.slot.ItemSlot
-import com.cleanroommc.modularui.widgets.slot.ModularSlot
+import com.cleanroommc.modularui.drawable.GuiDraw
+import com.cleanroommc.modularui.screen.viewport.ModularGuiContext
+import com.cleanroommc.modularui.theme.SlotTheme
+import com.cleanroommc.modularui.theme.WidgetThemeEntry
+import com.cleanroommc.modularui.widgets.ItemDisplayWidget
+import com.cleanroommc.neverenoughanimations.NEAConfig
 import net.minecraft.item.ItemStack
 import net.minecraft.util.StatCollector
 
@@ -12,30 +16,54 @@ internal class SceneMaterialSlot(
     stack: ItemStack,
     private val replace: (() -> Boolean)? = null,
     private val onTap: ((Int) -> Boolean)? = null,
-) : ItemSlot() {
+) : ItemDisplayWidget(), Interactable {
+
+    private val displayedStack = stack.copy()
 
     init {
-        val inventory = ItemStackHandler(1)
-        inventory.setStackInSlot(
-            0,
-            stack.copy(),
-        )
-        slot(ModularSlot(
-            inventory,
-            0,
-        ).canPut(false).canTake(false).canDragInto(false))
+        // Inventory slots create sync handlers, which client-only secondary panels cannot contain.
+        item(displayedStack)
+        displayAmount(true)
+        tooltip().setAutoUpdate(true).tooltipBuilder { tooltip ->
+            tooltip.addFromItem(displayedStack)
+            if (replace != null) {
+                tooltip.addLine(StatCollector.translateToLocal("iblueprints.variants.replace"))
+            }
+        }
     }
 
-    override fun buildTooltip(
-        stack: ItemStack?,
-        tooltip: RichTooltip,
+    override fun draw(
+        context: ModularGuiContext,
+        widgetTheme: WidgetThemeEntry<*>,
     ) {
-        super.buildTooltip(
-            stack,
-            tooltip,
+        super.draw(
+            context,
+            widgetTheme,
         )
-        if (replace != null) {
-            tooltip.addLine(StatCollector.translateToLocal("iblueprints.variants.replace"))
+        if (isHovering && (!ModularUI.Mods.NEA.isLoaded || NEAConfig.itemHoverOverlay)) {
+            val theme = getWidgetTheme(
+                panel.theme,
+                SlotTheme::class.java,
+            )
+            GuiDraw.drawRect(
+                1f,
+                1f,
+                16f,
+                16f,
+                theme.theme.slotHoverColor,
+            )
+        }
+    }
+
+    override fun drawForeground(context: ModularGuiContext) {
+        val tooltip = tooltip
+        if (tooltip != null && isHoveringFor(tooltip.showUpTimer) && !context.hasDraggable()) {
+            context.queueForegroundRender {
+                tooltip.draw(
+                    context,
+                    displayedStack,
+                )
+            }
         }
     }
 
