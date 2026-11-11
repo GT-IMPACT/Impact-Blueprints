@@ -14,6 +14,7 @@ import java.util.function.DoubleSupplier
 import com.cleanroommc.modularui.widgets.ButtonWidget
 import com.cleanroommc.modularui.widgets.layout.Flow
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget
+import cpw.mods.fml.common.Loader
 import java.util.Locale
 import net.minecraft.client.Minecraft
 import net.minecraft.nbt.NBTTagCompound
@@ -21,6 +22,7 @@ import net.minecraft.util.ChatComponentTranslation
 import net.minecraft.util.StatCollector
 import space.impact.iblueprints.MODID
 import space.impact.iblueprints.api.SceneEntry
+import space.impact.iblueprints.integration.gregtech.GregTechScenes
 import space.impact.iblueprints.integration.structures.SceneBlueprint
 import space.impact.iblueprints.planner.logPlannerTrace
 import space.impact.iblueprints.planner.tracePlannerStep
@@ -93,14 +95,25 @@ public object SceneViewer {
     ): ModularPanel {
         val editing = onLayoutChanged != null
         val details = "entry=${entry.id} editing=$editing"
+        val capturedLayout = savedPlan != null && SceneBlueprint.channels(savedPlan).isEmpty() &&
+            entry.id.startsWith("$MODID:metatile_") && Loader.isModLoaded("gregtech")
         val view = tracePlannerStep(
             step = "viewer.build",
             details = details,
         ) {
-            SceneView(entry.build(initialValues))
+            val scene = if (capturedLayout) {
+                GregTechScenes.create(
+                    controller = entry.item(),
+                    values = emptyMap(),
+                    savedPlan = savedPlan,
+                )
+            } else {
+                entry.build(initialValues)
+            }
+            SceneView(scene)
         }
         view.highlight(highlighted)
-        if (savedPlan != null) {
+        if (savedPlan != null && !capturedLayout) {
             tracePlannerStep(
                 step = "viewer.restore",
                 details = details,
@@ -111,7 +124,12 @@ public object SceneViewer {
                 )
             }
         }
-        val channelValues = entry.channels.associate {
+        val sceneChannels = if (capturedLayout) {
+            emptyList()
+        } else {
+            entry.channels
+        }
+        val channelValues = sceneChannels.associate {
             it.id to it.normalize(initialValues[it.id] ?: it.minimum)
         }.toMutableMap()
         val saveEdits: () -> Unit = {
@@ -218,7 +236,7 @@ public object SceneViewer {
                 ),
             )
         }
-        val channelCount = entry.channels.count {
+        val channelCount = sceneChannels.count {
             it.minimum != it.maximum
         }
         val sidebarTop = sceneTop

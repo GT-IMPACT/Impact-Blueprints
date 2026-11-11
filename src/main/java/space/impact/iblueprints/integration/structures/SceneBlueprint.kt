@@ -28,18 +28,43 @@ internal object SceneBlueprint {
     ): NBTTagCompound? {
         val simulation = scene.simulation ?: return null
         val origin = simulation.origin
-        val controller = scene.item(origin)?.let(::itemTag) ?: return null
-        val facing = facing(scene, origin) ?: return null
-        val positions = scene.positions().filterNot(origin::equals)
-        if (positions.size !in 1..MAX_BLOCKS) {
+        val blocks = scene.positions().filterNot(origin::equals).map { position ->
+            BlueprintPlacement(
+                position = position,
+                stack = scene.item(position) ?: return null,
+                hatchFacing = simulation.hatchFacing(position),
+            )
+        }
+        return capture(
+            controller = scene.item(origin) ?: return null,
+            origin = origin,
+            facing = facing(
+                scene = scene,
+                origin = origin,
+            ) ?: return null,
+            blocks = blocks,
+            channels = channels,
+        )
+    }
+
+    internal fun capture(
+        controller: ItemStack,
+        origin: ScenePosition,
+        facing: ExtendedFacing,
+        blocks: List<BlueprintPlacement>,
+        channels: Map<String, Int>,
+    ): NBTTagCompound? {
+        val controllerTag = itemTag(controller) ?: return null
+        if (blocks.size !in 1..MAX_BLOCKS) {
             return null
         }
         val palette = NBTTagList()
         val paletteIndices = hashMapOf<NBTTagCompound, Int>()
-        val placements = IntArray(positions.size * PLACEMENT_SIZE)
+        val placements = IntArray(blocks.size * PLACEMENT_SIZE)
         val offset = IntArray(3)
-        for ((index, position) in positions.withIndex()) {
-            val item = scene.item(position)?.let(::itemTag) ?: return null
+        for ((index, placement) in blocks.withIndex()) {
+            val position = placement.position
+            val item = itemTag(placement.stack) ?: return null
             val paletteIndex = paletteIndices.getOrPut(item) {
                 val entryIndex = palette.tagCount()
                 palette.appendTag(item)
@@ -61,7 +86,7 @@ internal object SceneBlueprint {
             placements[start + 3] = paletteIndex
             placements[start + 4] = localSide(
                 facing = facing,
-                side = simulation.hatchFacing(position),
+                side = placement.hatchFacing,
             )
         }
         val channelTag = NBTTagCompound()
@@ -78,7 +103,7 @@ internal object SceneBlueprint {
             )
             setTag(
                 "controller",
-                controller,
+                controllerTag,
             )
             setTag(
                 "channels",

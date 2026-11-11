@@ -25,6 +25,8 @@ import net.minecraftforge.common.util.FakePlayer
 import net.minecraftforge.common.util.ForgeDirection
 import net.minecraftforge.event.entity.player.PlayerInteractEvent
 import space.impact.iblueprints.integration.gregtech.BlueprintHatch
+import space.impact.iblueprints.integration.gregtech.CopyBuiltStructure
+import space.impact.iblueprints.item.BlankBlueprintItem
 import space.impact.iblueprints.item.StructureBlueprintItem
 import space.impact.iblueprints.planner.logPlannerTrace
 import space.impact.iblueprints.scene.ScenePosition
@@ -49,6 +51,10 @@ internal object BlueprintWorldUse {
             return
         }
         val held = player.heldItem ?: return
+        if (held.item === BlankBlueprintItem && Loader.isModLoaded("gregtech")) {
+            CopyBuiltStructure.onUse(event)
+            return
+        }
         if (held.item !== StructureBlueprintItem && held.item !is ItemConstructableTrigger) {
             return
         }
@@ -107,7 +113,7 @@ internal object BlueprintWorldUse {
     }
 
     @SideOnly(Side.CLIENT)
-    private fun sendBuildClick(event: PlayerInteractEvent) {
+    internal fun sendBuildClick(event: PlayerInteractEvent) {
         val client = Minecraft.getMinecraft()
         val player = event.entityPlayer as? EntityClientPlayerMP ?: return
         if (player !== client.thePlayer) {

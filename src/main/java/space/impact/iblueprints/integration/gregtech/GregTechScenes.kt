@@ -4,6 +4,7 @@ import gregtech.api.GregTech_API
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity
 import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_EnhancedMultiBlockBase
 import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_Hatch
+import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_MultiBlockBase
 import gregtech.api.util.GTStructureChannels
 import gregtech.api.util.GTStructureUtility
 import java.util.function.Function
@@ -12,8 +13,12 @@ import java.util.function.Supplier
 import net.minecraft.block.Block
 import net.minecraft.creativetab.CreativeTabs
 import net.minecraft.item.Item
+import net.minecraft.item.ItemBlock
 import net.minecraft.item.ItemStack
+import net.minecraft.nbt.NBTTagCompound
+import net.minecraft.tileentity.TileEntity
 import net.minecraftforge.common.MinecraftForge
+import net.minecraftforge.common.util.ForgeDirection
 import net.minecraftforge.oredict.OreDictionary
 import org.apache.logging.log4j.LogManager
 import space.impact.iblueprints.api.SceneChannel
@@ -21,6 +26,7 @@ import space.impact.iblueprints.api.SceneEntry
 import space.impact.iblueprints.api.SceneRegistry
 import space.impact.iblueprints.integration.structures.PreviewItemSource
 import space.impact.iblueprints.integration.structures.PreviewPlayer
+import space.impact.iblueprints.integration.structures.SceneBlueprint
 import space.impact.iblueprints.integration.structures.StructurePreviewCollector
 import space.impact.iblueprints.scene.BlockScene
 import space.impact.iblueprints.scene.ScenePosition
@@ -28,6 +34,7 @@ import space.impact.structures.ImpactStructures
 import space.impact.structures.alignment.constructable.ChannelDataAccessor
 import space.impact.structures.alignment.constructable.IConstructable
 import space.impact.structures.alignment.constructable.ISurvivalConstructable
+import space.impact.structures.alignment.enumerable.ExtendedFacing
 import space.impact.structures.structure.ISurvivalBuildEnvironment
 
 /** Loaded only after both optional mods have completed initialization. */
@@ -176,6 +183,7 @@ internal object GregTechScenes {
     internal fun create(
         controller: ItemStack,
         values: Map<String, Int>,
+        savedPlan: NBTTagCompound? = null,
     ): BlockScene {
         val scene = BlockScene(controller.displayName)
         try {
@@ -216,6 +224,13 @@ internal object GregTechScenes {
                     channel.normalize(values[channel.id] ?: channel.minimum),
                 )
             }
+            if (savedPlan != null) {
+                restoreBlocks(
+                    scene = scene,
+                    origin = origin,
+                    plan = savedPlan,
+                )
+            }
             val source = PreviewItemSource(constructionCandidates)
             val actor = PreviewPlayer(scene.world)
             val collector = StructurePreviewCollector(
@@ -229,13 +244,21 @@ internal object GregTechScenes {
             try {
                 ImpactStructures.enableInstrument(collector)
                 try {
-                    // Creative construction chooses the casing wherever a casing is allowed.
-                    constructable.construct(
-                        trigger,
-                        false,
-                    )
+                    if (savedPlan == null) {
+                        // Creative construction chooses the casing wherever a casing is allowed.
+                        constructable.construct(
+                            trigger,
+                            false,
+                        )
+                    } else {
+                        // The live checker detects variable dimensions from the saved blocks themselves.
+                        (constructable as GT_MetaTileEntity_MultiBlockBase).checkMachine(
+                            tile,
+                            tile.getStackInSlot(1),
+                        )
+                    }
                     // Only positions still requiring a block can request a dedicated hatch.
-                    if (constructable is ISurvivalConstructable) {
+                    if (savedPlan == null && constructable is ISurvivalConstructable) {
                         val environment = ISurvivalBuildEnvironment.create(
                             source,
                             actor,
@@ -288,6 +311,56 @@ internal object GregTechScenes {
         } catch (failure: Throwable) {
             scene.close()
             throw failure
+        }
+    }
+
+    private fun restoreBlocks(
+        scene: BlockScene,
+        origin: ScenePosition,
+        plan: NBTTagCompound,
+    ) {
+        require(SceneBlueprint.isValid(plan))
+        for (placement in SceneBlueprint.placements(
+            plan = plan,
+            origin = origin,
+            facing = ExtendedFacing.of(ForgeDirection.SOUTH),
+        )) {
+            val (position, stack, direction) = placement
+            val item = stack.item as? ItemBlock ?: error("Blueprint contains a non-block item")
+            val block = Block.getBlockFromItem(item)
+            val prototype = if (block === GregTech_API.sBlockMachines) {
+                GregTech_API.METATILEENTITIES.getOrNull(stack.itemDamage)
+                    ?: error("Unknown metatile ${stack.itemDamage}")
+            } else {
+                null
+            }
+            scene.block(
+                position = position,
+                block = block,
+                metadata = prototype?.tileEntityBaseType?.toInt() ?: item.getMetadata(stack.itemDamage),
+            )
+            if (prototype != null) {
+                val tile = scene.world.getTileEntity(
+                    x = position.x,
+                    y = position.y,
+                    z = position.z,
+                ) as IGregTechTileEntity
+                tile.setInitialValuesAsNBT(
+                    null,
+                    stack.itemDamage.toShort(),
+                )
+                if (direction != null) {
+                    scene.world.isRemote = true
+                    try {
+                        BlueprintHatch.orient(
+                            tile = tile as TileEntity,
+                            direction = direction,
+                        )
+                    } finally {
+                        scene.world.isRemote = false
+                    }
+                }
+            }
         }
     }
 }

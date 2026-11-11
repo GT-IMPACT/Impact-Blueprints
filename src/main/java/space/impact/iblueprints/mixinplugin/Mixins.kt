@@ -6,6 +6,19 @@ import com.gtnewhorizon.gtnhmixins.builders.MixinBuilder
 
 public enum class Mixins(private val mixinBuilder: MixinBuilder) : IMixins {
 
+    BUILT_STRUCTURE_BLUEPRINT(
+        MixinBuilder("Copy a successfully checked GregTech structure into a blueprint")
+            .setPhase(Phase.LATE)
+            .addRequiredMod(TargetedMod.GREGTECH)
+            .addRequiredMod(TargetedMod.IMPACT_API)
+            .addCommonMixins(
+                "gregtech.IMultiblockSetupInvoker",
+                "gregtech.MultiblockPieceMixin",
+            )
+            .setApplyIf {
+                true
+            },
+    ),
     BLUEPRINT_INTERFACE_TERMINAL(
         MixinBuilder("Allow structure patterns through the interface terminal item check")
             .setPhase(Phase.LATE)

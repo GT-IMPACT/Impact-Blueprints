@@ -17,6 +17,10 @@ public enum class TargetedMod(private val targetBuilder: TargetModBuilder) : ITa
         TargetModBuilder()
             .setModId("modularui2"),
     ),
+    GREGTECH(
+        TargetModBuilder()
+            .setModId("gregtech"),
+    ),
     IMPACT_API(
         TargetModBuilder()
             .setModId("impactapi"),

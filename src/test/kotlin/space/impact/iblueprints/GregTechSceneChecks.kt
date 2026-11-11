@@ -432,6 +432,7 @@ internal object GregTechSceneChecks {
                     large.diagnostics.isEmpty(),
                 )
                 assertTrue(large.positions().size > small.positions().size)
+                BuiltStructureCaptureChecks.checkLayout(large)
             }
         }
         val blast = ItemStack(
@@ -1172,6 +1173,9 @@ internal object GregTechSceneChecks {
             12,
         )) {
             entry.build(mapOf("length" to length)).use { scene ->
+                if (length == 12) {
+                    BuiltStructureCaptureChecks.checkLayout(scene)
+                }
                 assertEquals(
                     10 * (length + 4),
                     scene.positions().size,
@@ -1549,6 +1553,7 @@ internal object GregTechSceneChecks {
                     hatchPosition = energyPosition,
                     hatchFacing = nextFacing,
                 )
+                BuiltStructureCaptureChecks.run(rebuilt)
             }
         }
     }
