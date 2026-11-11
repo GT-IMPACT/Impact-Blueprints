@@ -65,6 +65,7 @@ dependencies {
     if (integrationRuntime.get()) {
         // Explicit support mods: never resolve the full dependency graph of a modpack.
         runtimeOnlyNonPublishable("com.github.GTNewHorizons:CodeChickenCore:1.4.22:dev") { isTransitive = false }
+        runtimeOnlyNonPublishable("com.github.GTNewHorizons:waila:1.19.34:dev") { isTransitive = false }
         runtimeOnlyNonPublishable("com.github.GTNewHorizons:modularui:1.1.24:dev") { isTransitive = false }
         runtimeOnlyNonPublishable("com.github.GTNewHorizons:Baubles-Expanded:2.2.24-GTNH:dev") { isTransitive = false }
         runtimeOnlyNonPublishable("com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-1082-GTNH:dev") { isTransitive = false }

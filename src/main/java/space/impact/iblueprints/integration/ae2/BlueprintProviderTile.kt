@@ -3,11 +3,16 @@ package space.impact.iblueprints.integration.ae2
 import appeng.api.AEApi
 import appeng.api.config.Actionable
 import appeng.api.config.SecurityPermissions
+import appeng.api.implementations.IPowerChannelState
 import appeng.api.networking.GridFlags
 import appeng.api.networking.crafting.ICraftingProvider
 import appeng.api.networking.crafting.ICraftingPatternDetails
 import appeng.api.networking.crafting.ICraftingProviderHelper
+import appeng.api.networking.events.MENetworkBootingStatusChange
+import appeng.api.networking.events.MENetworkChannelsChanged
 import appeng.api.networking.events.MENetworkCraftingPatternChange
+import appeng.api.networking.events.MENetworkEventSubscribe
+import appeng.api.networking.events.MENetworkPowerStatusChange
 import appeng.api.networking.security.MachineSource
 import appeng.api.storage.data.IAEItemStack
 import appeng.api.storage.data.IAEStack
@@ -21,6 +26,7 @@ import appeng.util.Platform
 import appeng.util.inv.MEInventoryCrafting
 import appeng.util.item.AEItemStack
 import com.cleanroommc.modularui.utils.item.ItemStackHandler
+import io.netty.buffer.ByteBuf
 import net.minecraft.entity.player.EntityPlayer
 import net.minecraft.inventory.InventoryCrafting
 import net.minecraft.inventory.IInventory
@@ -32,9 +38,10 @@ import net.minecraft.util.StatCollector
 import net.minecraftforge.common.util.Constants.NBT
 import space.impact.iblueprints.integration.structures.SceneBlueprint
 
-internal class BlueprintProviderTile : AENetworkTile(), ICraftingProvider, IInterfaceViewable {
+internal class BlueprintProviderTile : AENetworkTile(), ICraftingProvider, IInterfaceViewable, IPowerChannelState {
 
     private var active = false
+    private var clientFlags = 0
     private var refreshPatterns = true
     private var offers: Set<ICraftingPatternDetails>? = null
     private val pendingMaterials = mutableListOf<ItemStack>()
@@ -88,6 +95,59 @@ internal class BlueprintProviderTile : AENetworkTile(), ICraftingProvider, IInte
 
     override fun gridChanged() {
         refreshPatterns = true
+    }
+
+    @MENetworkEventSubscribe
+    public fun stateChange(event: MENetworkChannelsChanged) {
+        markForUpdate()
+    }
+
+    @MENetworkEventSubscribe
+    public fun stateChange(event: MENetworkPowerStatusChange) {
+        markForUpdate()
+    }
+
+    @MENetworkEventSubscribe
+    public fun stateChange(event: MENetworkBootingStatusChange) {
+        markForUpdate()
+    }
+
+    @TileEvent(TileEventType.NETWORK_WRITE)
+    public fun writeProviderState(data: ByteBuf) {
+        clientFlags = 0
+        try {
+            if (proxy.energy.isNetworkPowered) {
+                clientFlags = clientFlags or POWERED_FLAG
+            }
+            if (proxy.node.meetsChannelRequirements()) {
+                clientFlags = clientFlags or CHANNEL_FLAG
+            }
+            if (proxy.path.isNetworkBooting) {
+                clientFlags = clientFlags or BOOTING_FLAG
+            }
+        } catch (_: GridAccessException) {
+            // Keep AE2's offline state when the grid is unavailable.
+        }
+        data.writeByte(clientFlags)
+    }
+
+    @TileEvent(TileEventType.NETWORK_READ)
+    public fun readProviderState(data: ByteBuf): Boolean {
+        val previousFlags = clientFlags
+        clientFlags = data.readByte().toInt()
+        return clientFlags != previousFlags
+    }
+
+    override fun isPowered(): Boolean {
+        return clientFlags and POWERED_FLAG == POWERED_FLAG
+    }
+
+    override fun isActive(): Boolean {
+        return clientFlags and CHANNEL_FLAG == CHANNEL_FLAG
+    }
+
+    override fun isBooting(): Boolean {
+        return clientFlags and BOOTING_FLAG == BOOTING_FLAG
     }
 
     @TileEvent(TileEventType.TICK)
@@ -383,6 +443,9 @@ internal class BlueprintProviderTile : AENetworkTile(), ICraftingProvider, IInte
         const val UPGRADE_SLOTS = 3
         const val PATTERN_ROWS = 1 + UPGRADE_SLOTS
         const val PATTERN_SLOTS = BASE_SLOTS * PATTERN_ROWS
+        private const val POWERED_FLAG = 1
+        private const val CHANNEL_FLAG = 2
+        private const val BOOTING_FLAG = 4
         private const val OLD_UPGRADE_SLOTS = 2
         private const val OLD_PATTERN_SLOTS = BASE_SLOTS * (1 + OLD_UPGRADE_SLOTS)
     }

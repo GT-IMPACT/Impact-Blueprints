@@ -11,6 +11,7 @@ public class OptionalIntegrationTest {
         val urls = (javaClass.classLoader as URLClassLoader).getURLs()
         val absent = listOf(
             "appeng.",
+            "mcp.mobius.waila.",
             "gregtech.",
             "space.impact.structures.",
             "codechicken.",
