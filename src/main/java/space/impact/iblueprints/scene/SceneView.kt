@@ -301,14 +301,14 @@ public class SceneView(scene: BlockScene) {
     }
 
     public fun resetCamera() {
-        fitCamera()
         selection = emptyMap()
         highlighted = emptySet()
+        fitCamera()
     }
 
     private fun fitCamera() {
         camera.fit(
-            bounds = scene.bounds(),
+            bounds = SceneBounds.of(scene.positions() + highlightedPositions()),
             width = width,
             height = height,
         )
