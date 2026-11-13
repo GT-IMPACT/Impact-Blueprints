@@ -1,5 +1,6 @@
 package space.impact.iblueprints.integration.ae2
 
+import appeng.util.Platform
 import net.minecraft.block.Block
 import net.minecraft.block.BlockContainer
 import net.minecraft.block.material.Material
@@ -9,6 +10,8 @@ import net.minecraft.entity.player.EntityPlayer
 import net.minecraft.item.ItemStack
 import net.minecraft.tileentity.TileEntity
 import net.minecraft.world.World
+import net.minecraftforge.common.MinecraftForge
+import net.minecraftforge.event.world.BlockEvent
 
 internal object BlueprintProviderBlock : BlockContainer(Material.iron) {
 
@@ -58,6 +61,13 @@ internal object BlueprintProviderBlock : BlockContainer(Material.iron) {
         hitY: Float,
         hitZ: Float,
     ): Boolean {
+        if (player.isSneaking && Platform.isWrench(player, player.currentEquippedItem, x, y, z)) {
+            if (!world.isRemote) {
+                dismantle(world = world, x = x, y = y, z = z, player = player)
+            }
+            return true
+        }
+
         if (!world.isRemote) {
             val tile = world.getTileEntity(
                 x,
@@ -72,6 +82,23 @@ internal object BlueprintProviderBlock : BlockContainer(Material.iron) {
             }
         }
         return true
+    }
+
+    private fun dismantle(world: World, x: Int, y: Int, z: Int, player: EntityPlayer) {
+        val tile = world.getTileEntity(x, y, z) as? BlueprintProviderTile ?: return
+        if (!tile.accessible(player) || !world.canMineBlock(player, x, y, z)) {
+            return
+        }
+
+        val event = BlockEvent.BreakEvent(x, y, z, world, this, world.getBlockMetadata(x, y, z), player)
+        if (MinecraftForge.EVENT_BUS.post(event)) {
+            return
+        }
+
+        val drops = Platform.getBlockDrops(world, x, y, z)
+        if (removedByPlayer(world, player, x, y, z, false)) {
+            Platform.spawnDrops(world, x, y, z, drops.asList())
+        }
     }
 
     override fun breakBlock(
