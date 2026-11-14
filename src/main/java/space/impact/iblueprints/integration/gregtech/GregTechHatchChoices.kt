@@ -6,6 +6,7 @@ import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_Hatch
 import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_MultiBlockBase
 import gregtech.api.util.GTStructureUtility
 import java.util.IdentityHashMap
+import java.util.concurrent.ConcurrentHashMap
 import net.minecraft.item.ItemBlock
 import net.minecraft.item.ItemStack
 import net.minecraft.nbt.NBTTagCompound
@@ -526,6 +527,6 @@ internal class GregTechHatchChoices(
     }
 
     private companion object {
-        val reportedFailures = hashSetOf<String>()
+        val reportedFailures = ConcurrentHashMap.newKeySet<String>()
     }
 }

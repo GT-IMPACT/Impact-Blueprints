@@ -48,8 +48,5 @@ public class ClientProxy : CommonProxy() {
         if (Loader.isModLoaded("gregtech") && Loader.isModLoaded("impactapi")) {
             GregTechScenes.register()
         }
-        if (Loader.isModLoaded("NotEnoughItems")) {
-            SceneCatalysts.index()
-        }
     }
 }

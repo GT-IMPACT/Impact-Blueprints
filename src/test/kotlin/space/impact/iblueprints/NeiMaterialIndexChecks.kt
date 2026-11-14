@@ -3,9 +3,11 @@ package space.impact.iblueprints
 import java.util.function.Function
 import java.util.function.IntUnaryOperator
 import java.util.function.Supplier
+import kotlinx.coroutines.runBlocking
 import net.minecraft.init.Blocks
 import net.minecraft.item.ItemStack
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import space.impact.iblueprints.api.SceneChannel
 import space.impact.iblueprints.api.SceneEntry
@@ -37,6 +39,7 @@ internal object NeiMaterialIndexChecks {
             2,
         )
         val alternative = ItemStack(Blocks.emerald_block)
+        val testThread = Thread.currentThread()
         var inspectedAlternatives = false
         SceneRegistry.register(SceneEntry(
             id = "test:material_index_first",
@@ -54,6 +57,7 @@ internal object NeiMaterialIndexChecks {
                     channels = emptyList(),
                 ).apply {
                     hatchChoices = {
+                        assertTrue(Thread.currentThread() !== testThread)
                         // Queries must work before expensive hatch enumeration has finished, even for later scenes.
                         assertUsage(
                             material = casing,
@@ -108,7 +112,11 @@ internal object NeiMaterialIndexChecks {
                 )
             },
         ))
-        SceneCatalysts.index()
+        val indexTask = SceneCatalysts.startIndexing()
+        assertSame(
+            indexTask,
+            SceneCatalysts.startIndexing(),
+        )
         val preview = SceneRecipeHandler()
         preview.loadCraftingRecipes(firstController)
         preview.catalysts(0)
@@ -116,8 +124,8 @@ internal object NeiMaterialIndexChecks {
             material = casing,
             controller = firstController,
         )
-        while (SceneCatalysts.advanceIndex()) {
-            // Finish the same work normally resumed by client ticks.
+        runBlocking {
+            indexTask.await()
         }
         assertTrue(inspectedAlternatives)
         assertUsage(

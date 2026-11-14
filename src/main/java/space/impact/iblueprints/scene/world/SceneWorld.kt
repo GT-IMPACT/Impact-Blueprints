@@ -12,6 +12,7 @@ import net.minecraft.world.WorldProviderSurface
 import net.minecraft.world.WorldSettings
 import net.minecraft.world.WorldType
 import net.minecraft.world.chunk.IChunkProvider
+import net.minecraft.world.storage.MapStorage
 import net.minecraft.world.storage.SaveHandlerMP
 import space.impact.iblueprints.planner.logPlannerTraceFailure
 import space.impact.iblueprints.scene.ScenePosition
@@ -20,6 +21,7 @@ import space.impact.iblueprints.scene.ScenePosition
 internal class SceneWorld : World(
     SaveHandlerMP(),
     "ImpactBlueprintsPreview",
+    WorldProviderSurface(),
     WorldSettings(
         0,
         WorldSettings.GameType.CREATIVE,
@@ -27,7 +29,6 @@ internal class SceneWorld : World(
         false,
         WorldType.FLAT,
     ),
-    WorldProviderSurface(),
     Profiler(),
 ) {
 
@@ -37,6 +38,9 @@ internal class SceneWorld : World(
     private var visiblePositions: Set<ScenePosition>? = null
 
     init {
+        // The other World constructor replaces Forge's static save-handler cache.
+        mapStorage = MapStorage(saveHandler)
+        finishSetup()
         provider.dimensionId = Int.MAX_VALUE
         isRemote = true
     }

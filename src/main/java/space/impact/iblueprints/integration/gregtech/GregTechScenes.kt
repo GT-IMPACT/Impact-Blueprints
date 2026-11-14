@@ -1,5 +1,6 @@
 package space.impact.iblueprints.integration.gregtech
 
+import cpw.mods.fml.common.eventhandler.SubscribeEvent
 import gregtech.api.GregTech_API
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity
 import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_EnhancedMultiBlockBase
@@ -31,6 +32,7 @@ import space.impact.iblueprints.integration.structures.StructurePreviewCollector
 import space.impact.iblueprints.scene.BlockScene
 import space.impact.iblueprints.scene.ScenePosition
 import space.impact.structures.ImpactStructures
+import space.impact.structures.StructureEvent
 import space.impact.structures.alignment.constructable.ChannelDataAccessor
 import space.impact.structures.alignment.constructable.IConstructable
 import space.impact.structures.alignment.constructable.ISurvivalConstructable
@@ -112,6 +114,8 @@ internal object GregTechScenes {
     }
 
     internal fun register() {
+        // Forge 1.7.10 does not synchronize listener registration with event dispatch.
+        MinecraftForge.EVENT_BUS.register(this)
         var count = 0
         for ((
             id,
@@ -151,6 +155,11 @@ internal object GregTechScenes {
             count++
         }
         LogManager.getLogger("ImpactBlueprints").info("Registered $count multiblock scenes from the metatile registry")
+    }
+
+    @SubscribeEvent
+    public fun onPreviewElement(event: StructureEvent.StructureElementVisitedEvent) {
+        (event.instrumentIdentifier as? StructurePreviewCollector)?.onElement(event)
     }
 
     private fun channels(constructable: IConstructable): List<SceneChannel> {
@@ -240,59 +249,54 @@ internal object GregTechScenes {
                 actor = actor,
                 candidates = alternativeCandidates,
             )
-            MinecraftForge.EVENT_BUS.register(collector)
+            ImpactStructures.enableInstrument(collector)
             try {
-                ImpactStructures.enableInstrument(collector)
-                try {
-                    if (savedPlan == null) {
-                        // Creative construction chooses the casing wherever a casing is allowed.
-                        constructable.construct(
+                if (savedPlan == null) {
+                    // Creative construction chooses the casing wherever a casing is allowed.
+                    constructable.construct(
+                        trigger,
+                        false,
+                    )
+                } else {
+                    // The live checker detects variable dimensions from the saved blocks themselves.
+                    (constructable as GT_MetaTileEntity_MultiBlockBase).checkMachine(
+                        tile,
+                        tile.getStackInSlot(1),
+                    )
+                }
+                // Only positions still requiring a block can request a dedicated hatch.
+                if (savedPlan == null && constructable is ISurvivalConstructable) {
+                    val environment = ISurvivalBuildEnvironment.create(
+                        source,
+                        actor,
+                    )
+                    for (pass in 0 until 4096) {
+                        if (!collector.hasUnfilledPositions()) {
+                            break
+                        }
+                        val built = constructable.survivalConstruct(
                             trigger,
-                            false,
+                            4096,
+                            environment,
                         )
-                    } else {
-                        // The live checker detects variable dimensions from the saved blocks themselves.
-                        (constructable as GT_MetaTileEntity_MultiBlockBase).checkMachine(
-                            tile,
-                            tile.getStackInSlot(1),
-                        )
-                    }
-                    // Only positions still requiring a block can request a dedicated hatch.
-                    if (savedPlan == null && constructable is ISurvivalConstructable) {
-                        val environment = ISurvivalBuildEnvironment.create(
-                            source,
-                            actor,
-                        )
-                        for (pass in 0 until 4096) {
-                            if (!collector.hasUnfilledPositions()) {
-                                break
-                            }
-                            val built = constructable.survivalConstruct(
-                                trigger,
-                                4096,
-                                environment,
-                            )
-                            if (built <= 0) {
-                                break
-                            }
+                        if (built <= 0) {
+                            break
                         }
                     }
-                    if (collector.hasUnfilledPositions()) {
-                        scene.diagnostics.add("iblueprints.structure_incomplete")
-                    }
-                    val hatchChoices = GregTechHatchChoices(
-                        scene = scene,
-                        origin = origin,
-                        trigger = trigger,
-                    )
-                    collector.finish(hatchChoices::track)
-                    hatchChoices.initializeHatchTextures()
-                    scene.simulation = hatchChoices
-                } finally {
-                    ImpactStructures.disableInstrument()
                 }
+                if (collector.hasUnfilledPositions()) {
+                    scene.diagnostics.add("iblueprints.structure_incomplete")
+                }
+                val hatchChoices = GregTechHatchChoices(
+                    scene = scene,
+                    origin = origin,
+                    trigger = trigger,
+                )
+                collector.finish(hatchChoices::track)
+                hatchChoices.initializeHatchTextures()
+                scene.simulation = hatchChoices
             } finally {
-                MinecraftForge.EVENT_BUS.unregister(collector)
+                ImpactStructures.disableInstrument()
             }
             check(scene.positions().size > 1 || scene.elements.isNotEmpty()) {
                 "The controller did not produce a preview structure"

@@ -4,6 +4,12 @@ import codechicken.nei.recipe.GuiRecipe
 import codechicken.nei.scroll.ScrollBar
 import cpw.mods.fml.common.eventhandler.SubscribeEvent
 import cpw.mods.fml.common.gameevent.TickEvent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.yield
 import net.minecraft.client.Minecraft
 import net.minecraft.item.ItemStack
 import org.apache.logging.log4j.LogManager
@@ -16,131 +22,152 @@ import space.impact.iblueprints.scene.ScenePosition
 internal object SceneCatalysts {
 
     private val horizontalScroll = ScrollBar.defaultHorizontalBar().setOverflowType(ScrollBar.OverflowType.AUTO)
-    private const val INDEX_BUDGET_NANOS = 2_000_000L
-    private var pendingIndex: Iterator<Unit>? = null
+    private val indexScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private var indexedEntries: List<SceneEntry> = emptyList()
+
+    @Volatile
+    private var indexTask: Deferred<Unit>? = null
 
     @Volatile
     private var materialsByScene: Map<SceneEntry, List<SceneMaterialUsage>> = emptyMap()
 
-    internal fun index() {
-        if (pendingIndex != null) {
-            return
-        }
+    @Synchronized
+    internal fun startIndexing(): Deferred<Unit> {
         val entries = SceneRegistry.all()
-        materialsByScene = emptyMap()
-        pendingIndex = sequence {
-            // Publish every preview's blocks before probing hatches or enumerating channel combinations.
-            for (entry in entries) {
-                indexMaterials(
-                    entry = entry,
-                    includeAlternatives = false,
-                )
-                yield(Unit)
+        indexTask?.let {
+            if (!it.isCompleted || indexedEntries == entries && !it.isCancelled) {
+                return it
             }
-            for (entry in entries) {
-                indexMaterials(
-                    entry = entry,
-                    includeAlternatives = true,
+        }
+        indexedEntries = entries
+        val task = indexScope.async {
+            try {
+                index(entries)
+                LogManager.getLogger("ImpactBlueprints").info("Finished indexing NEI uses for ${entries.size} scenes")
+            } catch (failure: Throwable) {
+                LogManager.getLogger("ImpactBlueprints").error(
+                    "Cannot finish the structure usage index",
+                    failure,
                 )
-                yield(Unit)
+                throw failure
             }
-        }.iterator()
+        }
+        indexTask = task
+        return task
     }
 
-    internal fun advanceIndex(): Boolean {
-        val pending = pendingIndex ?: return false
-        val start = System.nanoTime()
-        do {
-            if (!pending.hasNext()) {
-                pendingIndex = null
-                return false
+    private suspend fun index(entries: List<SceneEntry>) {
+        // Publish the default blocks for every scene before probing alternatives.
+        for (entry in entries) {
+            indexConfigurations(
+                entry = entry,
+                includeAlternatives = false,
+            ).count()
+            yield()
+        }
+
+        // Give each scene a turn before expanding the next channel combination.
+        val configurations = entries.map {
+            indexConfigurations(
+                entry = it,
+                includeAlternatives = true,
+            ).iterator()
+        }.toMutableList()
+        while (configurations.isNotEmpty()) {
+            val iterator = configurations.iterator()
+            while (iterator.hasNext()) {
+                val sceneConfigurations = iterator.next()
+                if (sceneConfigurations.hasNext()) {
+                    sceneConfigurations.next()
+                    yield()
+                } else {
+                    iterator.remove()
+                }
             }
-            pending.next()
-        } while (System.nanoTime() - start < INDEX_BUDGET_NANOS)
-        return true
+        }
     }
 
-    // Resume on the client thread and publish immutable results for NEI's query workers.
-    private suspend fun SequenceScope<Unit>.indexMaterials(
+    private fun indexConfigurations(
         entry: SceneEntry,
         includeAlternatives: Boolean,
-    ) {
-        val controller = entry.item()
-        val materials = materialsByScene[entry].orEmpty().toMutableList()
-        val values = entry.channels.associateTo(linkedMapOf()) {
-            it.id to it.normalize(it.minimum)
-        }
-
-        suspend fun SequenceScope<Unit>.indexConfiguration(channelIndex: Int) {
-            if (includeAlternatives && channelIndex < entry.channels.size) {
-                val channel = entry.channels[channelIndex]
-                for (value in (channel.minimum..channel.maximum).asSequence().map(channel::normalize).distinct()) {
-                    values[channel.id] = value
-                    indexConfiguration(channelIndex + 1)
-                }
-                return
+    ): Sequence<Unit> {
+        return sequence {
+            val controller = entry.item()
+            val materials = materialsByScene[entry].orEmpty().toMutableList()
+            val values = entry.channels.associateTo(linkedMapOf()) {
+                it.id to it.normalize(it.minimum)
             }
-            try {
-                entry.build(values).use { scene ->
-                    val positionsByStack = linkedMapOf<ItemStack, MutableSet<ScenePosition>>()
-                    for (position in scene.positions().toSet() + scene.elements.keys) {
-                        yield(Unit)
-                        val stacks = listOfNotNull(scene.item(position)) + if (includeAlternatives) {
-                            scene.elements[position]?.inspectionAlternatives().orEmpty()
-                        } else {
-                            emptyList()
-                        }
-                        for (stack in stacks) {
-                            if (sameStack(
-                                    first = controller,
-                                    second = stack,
-                                ) || materials.any {
+
+            suspend fun SequenceScope<Unit>.indexConfiguration(channelIndex: Int) {
+                if (includeAlternatives && channelIndex < entry.channels.size) {
+                    val channel = entry.channels[channelIndex]
+                    for (value in (channel.minimum..channel.maximum).asSequence().map(channel::normalize).distinct()) {
+                        values[channel.id] = value
+                        indexConfiguration(channelIndex + 1)
+                    }
+                    return
+                }
+                try {
+                    entry.build(values).use { scene ->
+                        val positionsByStack = linkedMapOf<ItemStack, MutableSet<ScenePosition>>()
+                        for (position in scene.positions().toSet() + scene.elements.keys) {
+                            val stacks = listOfNotNull(scene.item(position)) + if (includeAlternatives) {
+                                scene.elements[position]?.inspectionAlternatives().orEmpty()
+                            } else {
+                                emptyList()
+                            }
+                            for (stack in stacks) {
+                                if (sameStack(
+                                        first = controller,
+                                        second = stack,
+                                    ) || materials.any {
+                                        sameStack(
+                                            first = it.stack,
+                                            second = stack,
+                                        )
+                                    }
+                                ) {
+                                    continue
+                                }
+                                val key = positionsByStack.keys.firstOrNull {
                                     sameStack(
-                                        first = it.stack,
+                                        first = it,
                                         second = stack,
                                     )
-                                }
-                            ) {
-                                continue
+                                } ?: stack
+                                positionsByStack.getOrPut(key) {
+                                    linkedSetOf()
+                                }.add(position)
                             }
-                            val key = positionsByStack.keys.firstOrNull {
-                                sameStack(
-                                    first = it,
-                                    second = stack,
-                                )
-                            } ?: stack
-                            positionsByStack.getOrPut(key) {
-                                linkedSetOf()
-                            }.add(position)
                         }
+                        val configuration = values.toMap()
+                        for ((stack, positions) in positionsByStack) {
+                            materials.add(SceneMaterialUsage(
+                                stack = stack,
+                                values = configuration,
+                                positions = positions.toSet(),
+                            ))
+                        }
+                        publishMaterials(
+                            entry = entry,
+                            materials = materials,
+                        )
                     }
-                    val configuration = values.toMap()
-                    for ((stack, positions) in positionsByStack) {
-                        materials.add(SceneMaterialUsage(
-                            stack = stack,
-                            values = configuration,
-                            positions = positions.toSet(),
-                        ))
+                } catch (failure: Throwable) {
+                    if (failure !is Exception && failure !is LinkageError) {
+                        throw failure
                     }
-                    publishMaterials(
-                        entry = entry,
-                        materials = materials,
+                    LogManager.getLogger("ImpactBlueprints").warn(
+                        "Cannot index structural blocks for ${entry.id} with $values: $failure",
                     )
                 }
-            } catch (failure: Throwable) {
-                if (failure !is Exception && failure !is LinkageError) {
-                    throw failure
-                }
-                LogManager.getLogger("ImpactBlueprints").warn(
-                    "Cannot index structural blocks for ${entry.id} with $values: $failure",
-                )
+                yield(Unit)
             }
-            yield(Unit)
-        }
-        try {
-            indexConfiguration(0)
-        } catch (failure: LinkageError) {
-            LogManager.getLogger("ImpactBlueprints").warn("Cannot enumerate channels for ${entry.id}: $failure")
+            try {
+                indexConfiguration(0)
+            } catch (failure: LinkageError) {
+                LogManager.getLogger("ImpactBlueprints").warn("Cannot enumerate channels for ${entry.id}: $failure")
+            }
         }
     }
 
@@ -170,6 +197,7 @@ internal object SceneCatalysts {
         )
     }
 
+    @Synchronized
     private fun publishMaterials(
         entry: SceneEntry,
         materials: List<SceneMaterialUsage>,
@@ -197,12 +225,14 @@ internal object SceneCatalysts {
     }
 
     internal fun matching(stack: ItemStack): List<SceneEntry> {
-        return materialsByScene.keys.filter {
-            usage(
-                entry = it,
-                stack = stack,
-            ) != null
-        }
+        return materialsByScene.filterValues { usages ->
+            usages.any {
+                sameStack(
+                    first = it.stack,
+                    second = stack,
+                )
+            }
+        }.keys.toList()
     }
 
     internal fun usage(
@@ -222,8 +252,11 @@ internal object SceneCatalysts {
         if (event.phase != TickEvent.Phase.END) {
             return
         }
-        advanceIndex()
-        val gui = Minecraft.getMinecraft().currentScreen as? GuiRecipe<*> ?: return
+        val minecraft = Minecraft.getMinecraft()
+        if (indexTask == null && minecraft.theWorld != null) {
+            startIndexing()
+        }
+        val gui = minecraft.currentScreen as? GuiRecipe<*> ?: return
         if (gui.handler !is SceneRecipeHandler) {
             return
         }

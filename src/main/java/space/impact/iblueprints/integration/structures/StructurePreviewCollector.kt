@@ -1,6 +1,6 @@
 package space.impact.iblueprints.integration.structures
 
-import cpw.mods.fml.common.eventhandler.SubscribeEvent
+import java.util.concurrent.ConcurrentHashMap
 import net.minecraft.item.ItemStack
 import net.minecraftforge.oredict.OreDictionary
 import org.apache.logging.log4j.LogManager
@@ -29,9 +29,8 @@ internal class StructurePreviewCollector(
         actor::addChatMessage,
     )
 
-    @SubscribeEvent
-    public fun onElement(event: StructureEvent.StructureElementVisitedEvent) {
-        if (event.instrumentIdentifier !== this || event.world !== scene.world) {
+    internal fun onElement(event: StructureEvent.StructureElementVisitedEvent) {
+        if (event.world !== scene.world) {
             return
         }
         val position = ScenePosition(
@@ -152,6 +151,6 @@ internal class StructurePreviewCollector(
     }
 
     private companion object {
-        val unavailablePlacementClasses = hashSetOf<String>()
+        val unavailablePlacementClasses = ConcurrentHashMap.newKeySet<String>()
     }
 }

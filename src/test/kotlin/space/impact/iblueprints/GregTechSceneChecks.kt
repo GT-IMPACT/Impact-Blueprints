@@ -121,6 +121,7 @@ import java.io.File
 import java.nio.file.Files
 import java.lang.reflect.Proxy
 import java.util.function.Supplier
+import kotlinx.coroutines.runBlocking
 
 internal object GregTechSceneChecks {
 
@@ -545,9 +546,8 @@ internal object GregTechSceneChecks {
             GT_Values.GT = gt
         }
         checkAssemblyLine()
-        SceneCatalysts.index()
-        while (SceneCatalysts.advanceIndex()) {
-            // Drain the client-tick work without starting Minecraft's main loop.
+        runBlocking {
+            SceneCatalysts.startIndexing().await()
         }
         val reactor = SceneRegistry.all().single {
             it.id == "iblueprints:metatile_32014"
@@ -659,7 +659,6 @@ internal object GregTechSceneChecks {
                     ItemStack(Blocks.glass),
                 ),
             )
-            MinecraftForge.EVENT_BUS.register(collector)
             ImpactStructures.enableInstrument(collector)
             try {
                 StructureEvent.StructureElementVisitedEvent.fireEvent(
@@ -674,7 +673,6 @@ internal object GregTechSceneChecks {
                 )
             } finally {
                 ImpactStructures.disableInstrument()
-                MinecraftForge.EVENT_BUS.unregister(collector)
             }
             collector.finish { _, _, _ ->
                 {

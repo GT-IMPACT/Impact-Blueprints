@@ -72,6 +72,7 @@ import java.lang.reflect.Constructor
 import java.net.URLClassLoader
 import java.util.UUID
 import java.util.function.Supplier
+import kotlinx.coroutines.runBlocking
 
 public class NeiPageIntegrationTest {
 
@@ -423,8 +424,8 @@ public class NeiPageIntegrationTest {
                 ),
             )
             ClientProxy().loadComplete(FMLLoadCompleteEvent())
-            while (SceneCatalysts.advanceIndex()) {
-                // Drain the client-tick work without starting Minecraft's main loop.
+            runBlocking {
+                SceneCatalysts.startIndexing().await()
             }
             val popup = PopupInputHandler()
             GuiContainerManager.addInputHandler(popup)
