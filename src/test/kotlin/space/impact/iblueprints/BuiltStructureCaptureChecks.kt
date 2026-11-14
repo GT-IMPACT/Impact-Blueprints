@@ -2,6 +2,9 @@ package space.impact.iblueprints
 
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity
 import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_EnhancedMultiBlockBase
+import ic2.core.block.BlockIC2Door
+import ic2.core.init.InternalName
+import ic2.core.item.block.ItemIC2Door
 import java.util.function.BooleanSupplier
 import net.minecraft.init.Blocks
 import net.minecraft.init.Items
@@ -9,22 +12,187 @@ import net.minecraft.item.ItemStack
 import net.minecraft.nbt.NBTTagCompound
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import net.minecraftforge.common.util.ForgeDirection
 import space.impact.iblueprints.integration.gregtech.BlueprintHatch
 import space.impact.iblueprints.integration.gregtech.BuiltStructureCapture
 import space.impact.iblueprints.integration.gregtech.CopyBuiltStructure
 import space.impact.iblueprints.integration.gregtech.GregTechScenes
+import space.impact.iblueprints.integration.structures.BlueprintPlacement
+import space.impact.iblueprints.integration.structures.BlueprintPlacementResult
+import space.impact.iblueprints.integration.structures.BlueprintWorldUse
 import space.impact.iblueprints.integration.structures.PreviewPlayer
 import space.impact.iblueprints.integration.structures.SceneBlueprint
 import space.impact.iblueprints.item.BlankBlueprintItem
 import space.impact.iblueprints.item.StructureBlueprintItem
 import space.impact.iblueprints.scene.BlockScene
 import space.impact.iblueprints.scene.ScenePosition
+import space.impact.iblueprints.scene.SceneView
 import space.impact.structures.ImpactStructures
 import space.impact.structures.StructureEvent
+import space.impact.structures.alignment.enumerable.ExtendedFacing
+import space.impact.structures.structure.IItemSource
 import space.impact.structures.structure.StructureUtility
 
 internal object BuiltStructureCaptureChecks {
+
+    internal fun checkDoorLayout() {
+        val block = BlockIC2Door(InternalName.blockDoorAlloy)
+        val item = ItemIC2Door(
+            InternalName.itemDoorAlloy,
+            block,
+        )
+        val origin = ScenePosition(
+            x = 0,
+            y = 64,
+            z = 0,
+        )
+        val lower = origin.copy(x = 1)
+        val upper = lower.copy(y = lower.y + 1)
+        val facing = ExtendedFacing.of(ForgeDirection.SOUTH)
+        val placements = listOf(
+            BlueprintPlacement(
+                position = upper,
+                stack = ItemStack(block),
+                hatchFacing = null,
+                doorMetadata = 9,
+            ),
+            BlueprintPlacement(
+                position = lower,
+                stack = ItemStack(block),
+                hatchFacing = null,
+                doorMetadata = 5,
+            ),
+        )
+        val plan = requireNotNull(SceneBlueprint.capture(
+            controller = ItemStack(Blocks.stone),
+            origin = origin,
+            facing = facing,
+            blocks = placements,
+            channels = emptyMap(),
+        ))
+        val material = requireNotNull(SceneBlueprint.materials(plan)).single {
+            it.item === item
+        }
+        assertEquals(
+            1,
+            material.stackSize,
+        )
+        val restored = SceneBlueprint.placements(
+            plan = plan,
+            origin = origin,
+            facing = facing,
+        )
+        assertEquals(
+            listOf(9, 5),
+            restored.map(BlueprintPlacement::doorMetadata),
+        )
+        val rotated = SceneBlueprint.placements(
+            plan = plan,
+            origin = origin,
+            facing = ExtendedFacing.of(ForgeDirection.WEST),
+        )
+        assertEquals(
+            listOf(9, 6),
+            rotated.map(BlueprintPlacement::doorMetadata),
+        )
+        BlockScene("Door").use { scene ->
+            for (placement in restored) {
+                scene.block(
+                    position = placement.position,
+                    block = block,
+                    metadata = requireNotNull(placement.doorMetadata),
+                )
+            }
+            assertSame(
+                item,
+                scene.item(upper)?.item,
+            )
+            assertTrue(scene.isUpperDoorHalf(upper))
+            assertFalse(scene.isUpperDoorHalf(lower))
+            assertEquals(
+                setOf(lower, upper),
+                SceneView(scene).materials.single().positions.toSet(),
+            )
+        }
+        BlockScene("Door placement").use { scene ->
+            val world = scene.world
+            world.isRemote = false
+            scene.block(
+                position = lower.copy(y = lower.y - 1),
+                block = Blocks.stone,
+            )
+            val player = PreviewPlayer(world)
+            var remaining = 1
+            var acceptExtraction = false
+            val source = IItemSource { predicate, simulate, _ ->
+                assertTrue(predicate.test(material))
+                if (simulate) {
+                    mapOf(material to remaining)
+                } else if (acceptExtraction) {
+                    remaining--
+                    mapOf(material to 1)
+                } else {
+                    emptyMap()
+                }
+            }
+            assertEquals(
+                BlueprintPlacementResult.EXTRACTION_FAILED,
+                BlueprintWorldUse.placeDoor(
+                    lower = restored[1],
+                    upper = restored[0],
+                    world = world,
+                    player = player,
+                    source = source,
+                ),
+            )
+            assertEquals(
+                listOf(lower.copy(y = lower.y - 1)),
+                scene.positions(),
+            )
+            acceptExtraction = true
+            assertEquals(
+                BlueprintPlacementResult.PLACED,
+                BlueprintWorldUse.placeDoor(
+                    lower = restored[1],
+                    upper = restored[0],
+                    world = world,
+                    player = player,
+                    source = source,
+                ),
+            )
+            assertEquals(
+                0,
+                remaining,
+            )
+            assertEquals(
+                5,
+                world.blockState(lower)?.metadata,
+            )
+            assertEquals(
+                9,
+                world.blockState(upper)?.metadata,
+            )
+        }
+        val legacy = requireNotNull(SceneBlueprint.capture(
+            controller = ItemStack(Blocks.stone),
+            origin = origin,
+            facing = facing,
+            blocks = placements.map {
+                it.copy(doorMetadata = null)
+            },
+            channels = emptyMap(),
+        ))
+        assertEquals(
+            listOf(8, 0),
+            SceneBlueprint.placements(
+                plan = legacy,
+                origin = origin,
+                facing = facing,
+            ).map(BlueprintPlacement::doorMetadata),
+        )
+    }
 
     internal fun checkLayout(scene: BlockScene) {
         val plan = requireNotNull(SceneBlueprint.capture(

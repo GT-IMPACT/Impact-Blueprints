@@ -1,8 +1,10 @@
 package space.impact.iblueprints.scene
 
 import net.minecraft.block.Block
+import net.minecraft.item.Item
 import net.minecraft.item.ItemStack
 import net.minecraft.nbt.NBTTagCompound
+import space.impact.iblueprints.integration.structures.BlueprintDoor
 import space.impact.iblueprints.scene.world.SceneWorld
 
 /** Client-side scene built through API. It never ticks or accesses the player's world. */
@@ -84,7 +86,10 @@ public class BlockScene(public val title: String) : AutoCloseable {
             y = position.y,
             z = position.z,
         )
-        val item = net.minecraft.item.Item.getItemFromBlock(block) ?: return null
+        if (BlueprintDoor.isReinforced(block)) {
+            return BlueprintDoor.material()
+        }
+        val item = Item.getItemFromBlock(block) ?: return null
         val damage = block.getDamageValue(
             world,
             position.x,
@@ -96,6 +101,19 @@ public class BlockScene(public val title: String) : AutoCloseable {
             1,
             damage,
         )
+    }
+
+    internal fun isUpperDoorHalf(position: ScenePosition): Boolean {
+        val (x, y, z) = position
+        return BlueprintDoor.isReinforced(world.getBlock(
+            x = x,
+            y = y,
+            z = z,
+        )) && world.getBlockMetadata(
+            x = x,
+            y = y,
+            z = z,
+        ) and BlueprintDoor.UPPER_HALF != 0
     }
 
     override fun close() {

@@ -337,7 +337,8 @@ internal object GregTechScenes {
             scene.block(
                 position = position,
                 block = block,
-                metadata = prototype?.tileEntityBaseType?.toInt() ?: item.getMetadata(stack.itemDamage),
+                metadata = placement.doorMetadata ?: prototype?.tileEntityBaseType?.toInt()
+                    ?: item.getMetadata(stack.itemDamage),
             )
             if (prototype != null) {
                 val tile = scene.world.getTileEntity(

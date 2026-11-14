@@ -8,4 +8,5 @@ internal data class BlueprintPlacement(
     val position: ScenePosition,
     val stack: ItemStack,
     val hatchFacing: ForgeDirection?,
+    val doorMetadata: Int? = null,
 )

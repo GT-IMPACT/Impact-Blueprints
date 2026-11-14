@@ -20,6 +20,7 @@ import codechicken.nei.recipe.RecipeHandlerRef
 import codechicken.nei.recipe.widget.RecipeWidget
 import com.mojang.authlib.GameProfile
 import cpw.mods.fml.common.FMLCommonHandler
+import cpw.mods.fml.common.IFMLSidedHandler
 import cpw.mods.fml.common.gameevent.TickEvent
 import cpw.mods.fml.common.DummyModContainer
 import cpw.mods.fml.common.LoadController
@@ -69,6 +70,7 @@ import space.impact.iblueprints.scene.world.SceneWorld
 import java.awt.Point
 import java.io.File
 import java.lang.reflect.Constructor
+import java.lang.reflect.Proxy
 import java.net.URLClassLoader
 import java.util.UUID
 import java.util.function.Supplier
@@ -212,6 +214,40 @@ public class NeiPageIntegrationTest {
                 "iblueprints",
                 "structure_blueprint",
             ) === StructureBlueprintItem)
+            val ic2Metadata = ModMetadata().apply {
+                modId = "IC2"
+            }
+            val fml = FMLCommonHandler.instance()
+            val sidedDelegate = FMLCommonHandler::class.java.getDeclaredField("sidedDelegate")
+            sidedDelegate.isAccessible = true
+            val previousSide = sidedDelegate.get(fml)
+            val serverSide = Proxy.newProxyInstance(
+                IFMLSidedHandler::class.java.classLoader,
+                arrayOf(IFMLSidedHandler::class.java),
+            ) { _, method, _ ->
+                check(method.name == "getSide")
+                Side.SERVER
+            } as IFMLSidedHandler
+            activeContainer.set(
+                loadController,
+                DummyModContainer(ic2Metadata),
+            )
+            try {
+                sidedDelegate.set(
+                    fml,
+                    serverSide,
+                )
+                BuiltStructureCaptureChecks.checkDoorLayout()
+            } finally {
+                sidedDelegate.set(
+                    fml,
+                    previousSide,
+                )
+                activeContainer.set(
+                    loadController,
+                    engineContainer,
+                )
+            }
             val getPermutations = ItemListLoader::class.java.getDeclaredMethod(
                 "getPermutations",
                 Item::class.java,

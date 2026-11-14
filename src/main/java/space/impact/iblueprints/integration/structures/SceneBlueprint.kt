@@ -1,6 +1,7 @@
 package space.impact.iblueprints.integration.structures
 
 import cpw.mods.fml.common.registry.GameData
+import net.minecraft.block.Block
 import net.minecraft.item.ItemStack
 import net.minecraft.nbt.CompressedStreamTools
 import net.minecraft.nbt.NBTTagCompound
@@ -21,6 +22,7 @@ internal object SceneBlueprint {
     private const val MAX_BLOCKS = 16_384
     private const val MAX_OFFSET = 4096
     internal const val MAX_BYTES = 30_000
+    private val previewDirection = ForgeDirection.SOUTH
 
     internal fun capture(
         scene: BlockScene,
@@ -29,10 +31,30 @@ internal object SceneBlueprint {
         val simulation = scene.simulation ?: return null
         val origin = simulation.origin
         val blocks = scene.positions().filterNot(origin::equals).map { position ->
+            val (x, y, z) = position
+            val block = scene.world.getBlock(
+                x = x,
+                y = y,
+                z = z,
+            )
+            val doorMetadata = if (BlueprintDoor.isReinforced(block)) {
+                scene.world.getBlockMetadata(
+                    x = x,
+                    y = y,
+                    z = z,
+                )
+            } else {
+                null
+            }
             BlueprintPlacement(
                 position = position,
-                stack = scene.item(position) ?: return null,
+                stack = if (doorMetadata != null) {
+                    ItemStack(block)
+                } else {
+                    scene.item(position) ?: return null
+                },
                 hatchFacing = simulation.hatchFacing(position),
+                doorMetadata = doorMetadata,
             )
         }
         return capture(
@@ -65,6 +87,16 @@ internal object SceneBlueprint {
         for ((index, placement) in blocks.withIndex()) {
             val position = placement.position
             val item = itemTag(placement.stack) ?: return null
+            placement.doorMetadata?.let {
+                item.setInteger(
+                    "doorMeta",
+                    BlueprintDoor.rotate(
+                        metadata = it,
+                        from = facing.direction,
+                        to = previewDirection,
+                    ),
+                )
+            }
             val paletteIndex = paletteIndices.getOrPut(item) {
                 val entryIndex = palette.tagCount()
                 palette.appendTag(item)
@@ -147,7 +179,11 @@ internal object SceneBlueprint {
             return false
         }
         for (index in 0 until palette.tagCount()) {
-            if (!isItemTagValid(palette.getCompoundTagAt(index))) {
+            if (!isItemTagValid(
+                    tag = palette.getCompoundTagAt(index),
+                    allowDoorMetadata = true,
+                )
+            ) {
                 return false
             }
         }
@@ -210,31 +246,55 @@ internal object SceneBlueprint {
             return null
         }
         val stacks = mutableListOf(controller)
-        val counts = IntArray(palette.tagCount())
+        val entries = List(
+            palette.tagCount(),
+            palette::getCompoundTagAt,
+        )
+        val counts = IntArray(entries.size)
         for (index in placements.indices step PLACEMENT_SIZE) {
             val paletteIndex = placements[index + 3]
             if (paletteIndex !in counts.indices) {
                 return null
             }
-            counts[paletteIndex]++
+            val entry = entries[paletteIndex]
+            if (entry.getInteger("doorMeta") and BlueprintDoor.UPPER_HALF == 0) {
+                counts[paletteIndex]++
+            }
         }
+        var legacyDoorHalves = 0
+        var doors = 0
         for ((index, count) in counts.withIndex()) {
             if (count == 0) {
                 continue
             }
-            val item = stack(palette.getCompoundTagAt(index)) ?: return null
+            val entry = entries[index]
+            val blockItem = stack(entry) ?: return null
+            if (BlueprintDoor.isReinforcedBlockItem(blockItem.item)) {
+                if (!entry.hasKey("doorMeta")) {
+                    legacyDoorHalves += count
+                } else {
+                    doors += count
+                }
+                continue
+            }
             val existing = stacks.find {
-                item.isItemEqual(it) && ItemStack.areItemStackTagsEqual(
-                    item,
+                blockItem.isItemEqual(it) && ItemStack.areItemStackTagsEqual(
+                    blockItem,
                     it,
                 )
             }
             if (existing == null) {
-                item.stackSize = count
-                stacks.add(item)
+                blockItem.stackSize = count
+                stacks.add(blockItem)
             } else {
                 existing.stackSize += count
             }
+        }
+        doors += (legacyDoorHalves + 1) / 2
+        if (doors > 0) {
+            val door = BlueprintDoor.material() ?: return null
+            door.stackSize = doors
+            stacks.add(door)
         }
         return stacks
     }
@@ -252,6 +312,15 @@ internal object SceneBlueprint {
             facing = facing,
         )) {
             val (position, item, side) = placement
+            val doorMetadata = placement.doorMetadata
+            if (doorMetadata != null) {
+                view.scene.block(
+                    position = position,
+                    block = Block.getBlockFromItem(item.item),
+                    metadata = doorMetadata,
+                )
+                continue
+            }
             view.replaceBlock(
                 position = position,
                 stack = item,
@@ -275,13 +344,17 @@ internal object SceneBlueprint {
     ): List<BlueprintPlacement> {
         val palette = plan.getTagList("palette", NBT.TAG_COMPOUND)
         val placements = plan.getIntArray("placements")
-        val items = List(palette.tagCount()) {
-            stack(palette.getCompoundTagAt(it))
-        }
+        val entries = List(
+            palette.tagCount(),
+            palette::getCompoundTagAt,
+        )
+        val items = entries.map(::stack)
         val result = ArrayList<BlueprintPlacement>(placements.size / PLACEMENT_SIZE)
         val offset = IntArray(3)
         for (index in placements.indices step PLACEMENT_SIZE) {
-            val item = items.getOrNull(placements[index + 3]) ?: continue
+            val paletteIndex = placements[index + 3]
+            val item = items.getOrNull(paletteIndex) ?: continue
+            val entry = entries[paletteIndex]
             facing.getWorldOffset(
                 intArrayOf(
                     placements[index],
@@ -317,10 +390,56 @@ internal object SceneBlueprint {
                     position = position,
                     stack = item,
                     hatchFacing = worldSide,
+                    doorMetadata = if (entry.hasKey("doorMeta")) {
+                        BlueprintDoor.rotate(
+                            metadata = entry.getInteger("doorMeta"),
+                            from = previewDirection,
+                            to = facing.direction,
+                        )
+                    } else {
+                        null
+                    },
                 ),
             )
         }
-        return result
+        return restoreLegacyDoorHalves(
+            placements = result,
+            direction = facing.direction,
+        )
+    }
+
+    private fun restoreLegacyDoorHalves(
+        placements: List<BlueprintPlacement>,
+        direction: ForgeDirection,
+    ): List<BlueprintPlacement> {
+        val legacy = placements.filter {
+            it.doorMetadata == null && BlueprintDoor.isReinforcedBlockItem(it.stack.item)
+        }.map(BlueprintPlacement::position).toSet()
+        if (legacy.isEmpty()) {
+            return placements
+        }
+        // Older plans only recorded the two positions. Pair them in vertical order.
+        val metadataByPosition = hashMapOf<ScenePosition, Int>()
+        val lowerMetadata = BlueprintDoor.rotate(
+            metadata = 0,
+            from = previewDirection,
+            to = direction,
+        )
+        for (position in legacy.sortedBy(ScenePosition::y)) {
+            val above = position.copy(y = position.y + 1)
+            if (position !in metadataByPosition && above in legacy) {
+                metadataByPosition[position] = lowerMetadata
+                metadataByPosition[above] = BlueprintDoor.UPPER_HALF
+            }
+        }
+        return placements.map { placement ->
+            val metadata = metadataByPosition[placement.position]
+            if (metadata != null) {
+                placement.copy(doorMetadata = metadata)
+            } else {
+                placement
+            }
+        }
     }
 
     private fun facing(
@@ -358,9 +477,24 @@ internal object SceneBlueprint {
         }
     }
 
-    private fun isItemTagValid(tag: NBTTagCompound): Boolean {
+    private fun isItemTagValid(
+        tag: NBTTagCompound,
+        allowDoorMetadata: Boolean = false,
+    ): Boolean {
         val name = tag.getString("item")
-        return tag.func_150296_c().size == 2 && name.isNotEmpty() &&
+        val keyCount = if (allowDoorMetadata && tag.hasKey("doorMeta")) {
+            if (name != BlueprintDoor.BLOCK_NAME || !tag.hasKey(
+                    "doorMeta",
+                    NBT.TAG_INT,
+                ) || tag.getInteger("doorMeta") !in 0..15
+            ) {
+                return false
+            }
+            3
+        } else {
+            2
+        }
+        return tag.func_150296_c().size == keyCount && name.isNotEmpty() &&
             GameData.getItemRegistry().containsKey(name) && tag.hasKey(
                 "damage",
                 NBT.TAG_INT,

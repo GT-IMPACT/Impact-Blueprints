@@ -7,6 +7,7 @@ import net.minecraft.item.ItemBlock
 import net.minecraft.item.ItemStack
 import net.minecraft.nbt.NBTTagCompound
 import net.minecraftforge.common.MinecraftForge
+import space.impact.iblueprints.integration.structures.BlueprintDoor
 import space.impact.iblueprints.integration.structures.BlueprintPlacement
 import space.impact.iblueprints.integration.structures.SceneBlueprint
 import space.impact.iblueprints.mixins.gregtech.IMultiblockSetupInvoker
@@ -89,6 +90,11 @@ internal object BuiltStructureCapture {
                 position.z,
             )
             val item = Item.getItemFromBlock(block) as? ItemBlock ?: return null
+            val placedTile = world.getTileEntity(
+                position.x,
+                position.y,
+                position.z,
+            )
             blocks.add(BlueprintPlacement(
                 position = position,
                 stack = ItemStack(
@@ -101,11 +107,16 @@ internal object BuiltStructureCapture {
                         position.z,
                     ),
                 ),
-                hatchFacing = BlueprintHatch.facing(world.getTileEntity(
-                    position.x,
-                    position.y,
-                    position.z,
-                )),
+                hatchFacing = BlueprintHatch.facing(placedTile),
+                doorMetadata = if (BlueprintDoor.isReinforced(block)) {
+                    world.getBlockMetadata(
+                        position.x,
+                        position.y,
+                        position.z,
+                    )
+                } else {
+                    null
+                },
             ))
         }
         return SceneBlueprint.capture(

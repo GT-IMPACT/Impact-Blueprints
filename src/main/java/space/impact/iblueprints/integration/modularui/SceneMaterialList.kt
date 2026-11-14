@@ -29,7 +29,10 @@ internal class SceneMaterialList(private val view: SceneView) : ListWidget<IWidg
 
     private fun rebuild() {
         for (material in view.materials) {
-            val quantity = "x ${material.positions.size}"
+            val count = material.positions.count {
+                !view.scene.isUpperDoorHalf(it)
+            }
+            val quantity = "x $count"
             val label = IKey.str(quantity).color {
                 if (view.isMaterialSelected(material)) {
                     0xFFD166

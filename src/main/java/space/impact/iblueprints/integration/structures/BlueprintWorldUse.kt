@@ -149,7 +149,7 @@ internal object BlueprintWorldUse {
     ) {
         ImpactStructures.startHinting(world)
         try {
-            for ((position, stack, _) in placements) {
+            for ((position, stack, _, doorMetadata) in placements) {
                 val item = stack.item as? ItemBlock ?: continue
                 val (x, y, z) = position
                 if (!world.blockExists(
@@ -161,10 +161,15 @@ internal object BlueprintWorldUse {
                     continue
                 }
                 val block = Block.getBlockFromItem(item)
+                val hintStack = if (doorMetadata != null) {
+                    BlueprintDoor.material() ?: stack
+                } else {
+                    stack
+                }
                 val icons = Array(ForgeDirection.VALID_DIRECTIONS.size) {
                     block.getIcon(
                         it,
-                        item.getMetadata(stack.itemDamage),
+                        doorMetadata ?: item.getMetadata(stack.itemDamage),
                     )
                 }
                 ImpactStructures.hintParticle(
@@ -173,7 +178,7 @@ internal object BlueprintWorldUse {
                     y,
                     z,
                     icons,
-                    stack,
+                    hintStack,
                 )
             }
         } finally {
@@ -209,9 +214,13 @@ internal object BlueprintWorldUse {
         var missing: ItemStack? = null
         var built = 0
         var pending = 0
+        val byPosition = placements.associateBy(BlueprintPlacement::position)
         for (placement in placements) {
-            val (position, stack, direction) = placement
+            val (position, stack, direction, doorMetadata) = placement
             val (x, y, z) = position
+            if (doorMetadata != null && doorMetadata and BlueprintDoor.UPPER_HALF != 0) {
+                continue
+            }
             if (!world.blockExists(
                     x,
                     y,
@@ -221,14 +230,32 @@ internal object BlueprintWorldUse {
                 pending++
                 continue
             }
-            if (matchesBlock(
+            val upperDoor = if (doorMetadata != null) {
+                byPosition[position.copy(y = y + 1)]
+            } else {
+                null
+            }
+            val upperMetadata = upperDoor?.doorMetadata
+            val hasDoorPair = upperDoor != null && upperMetadata != null &&
+                upperMetadata and BlueprintDoor.UPPER_HALF != 0 && upperDoor.stack.item === stack.item
+            val matches = if (doorMetadata == null) {
+                matchesBlock(
                     world = world,
                     x = x,
                     y = y,
                     z = z,
                     stack = stack,
                 )
-            ) {
+            } else {
+                hasDoorPair && matchesDoorHalf(
+                    world = world,
+                    placement = placement,
+                ) && matchesDoorHalf(
+                    world = world,
+                    placement = upperDoor,
+                )
+            }
+            if (matches) {
                 val hatch = if (direction != null && gregTech) {
                     world.getTileEntity(
                         x,
@@ -247,12 +274,24 @@ internal object BlueprintWorldUse {
                 pending++
                 continue
             }
-            val result = place(
-                placement = placement,
-                world = world,
-                player = player,
-                source = source,
-            )
+            val result = if (doorMetadata == null) {
+                place(
+                    placement = placement,
+                    world = world,
+                    player = player,
+                    source = source,
+                )
+            } else if (hasDoorPair) {
+                placeDoor(
+                    lower = placement,
+                    upper = upperDoor,
+                    world = world,
+                    player = player,
+                    source = source,
+                )
+            } else {
+                BlueprintPlacementResult.REJECTED
+            }
             if (result == BlueprintPlacementResult.PLACED) {
                 built++
                 if (direction != null && gregTech) {
@@ -276,7 +315,11 @@ internal object BlueprintWorldUse {
                     placement,
                 )
                 if (result == BlueprintPlacementResult.MISSING_ITEM && missing == null) {
-                    missing = stack
+                    missing = if (doorMetadata != null) {
+                        BlueprintDoor.material()
+                    } else {
+                        stack
+                    }
                 }
             }
         }
@@ -300,6 +343,122 @@ internal object BlueprintWorldUse {
         )
     }
 
+    internal fun placeDoor(
+        lower: BlueprintPlacement,
+        upper: BlueprintPlacement,
+        world: World,
+        player: EntityPlayer,
+        source: IItemSource?,
+    ): BlueprintPlacementResult {
+        val material = BlueprintDoor.material() ?: return BlueprintPlacementResult.UNSUPPORTED_ITEM
+        val halves = listOf(
+            lower,
+            upper,
+        )
+        for ((position) in halves) {
+            val (x, y, z) = position
+            if (!world.blockExists(
+                    x,
+                    y,
+                    z,
+                )
+            ) {
+                return BlueprintPlacementResult.REJECTED
+            }
+            placementObstruction(
+                world = world,
+                player = player,
+                position = position,
+            )?.let {
+                return it
+            }
+        }
+        if (source?.takeOne(
+                material,
+                true,
+            ) == false
+        ) {
+            return BlueprintPlacementResult.MISSING_ITEM
+        }
+        val snapshots = halves.map { (position) ->
+            BlockSnapshot.getBlockSnapshot(
+                world,
+                position.x,
+                position.y,
+                position.z,
+            )
+        }
+        val (x, y, z) = lower.position
+        // The real item places both halves in one Forge placement event.
+        if (!material.copy().tryPlaceItemIntoWorld(
+                player,
+                world,
+                x,
+                y - 1,
+                z,
+                ForgeDirection.UP.ordinal,
+                0.5f,
+                1f,
+                0.5f,
+            )
+        ) {
+            return BlueprintPlacementResult.REJECTED
+        }
+        val result = if (halves.any {
+                !matchesDoorHalf(
+                    world = world,
+                    placement = it,
+                )
+            }
+        ) {
+            BlueprintPlacementResult.WRONG_BLOCK
+        } else if (source?.takeOne(
+                material,
+                false,
+            ) == false
+        ) {
+            BlueprintPlacementResult.EXTRACTION_FAILED
+        } else {
+            BlueprintPlacementResult.PLACED
+        }
+        if (result != BlueprintPlacementResult.PLACED) {
+            for (snapshot in snapshots.asReversed()) {
+                snapshot.restore(
+                    true,
+                    false,
+                )
+            }
+            return result
+        }
+        for ((position, _, _, metadata) in halves) {
+            world.setBlockMetadataWithNotify(
+                position.x,
+                position.y,
+                position.z,
+                requireNotNull(metadata),
+                2,
+            )
+        }
+        return BlueprintPlacementResult.PLACED
+    }
+
+    private fun matchesDoorHalf(
+        world: World,
+        placement: BlueprintPlacement,
+    ): Boolean {
+        val (x, y, z) = placement.position
+        val metadata = requireNotNull(placement.doorMetadata)
+        return world.getBlock(
+            x,
+            y,
+            z,
+        ) === Block.getBlockFromItem(placement.stack.item) && world.getBlockMetadata(
+            x,
+            y,
+            z,
+        ) and BlueprintDoor.UPPER_HALF == metadata and BlueprintDoor.UPPER_HALF
+    }
+
     internal fun place(
         placement: BlueprintPlacement,
         world: World,
@@ -311,29 +470,12 @@ internal object BlueprintWorldUse {
         if (stack.item !is ItemBlock) {
             return BlueprintPlacementResult.UNSUPPORTED_ITEM
         }
-        if (!world.canMineBlock(
-                player,
-                x,
-                y,
-                z,
-            )
-        ) {
-            return BlueprintPlacementResult.PROTECTED
-        }
-        // ItemBlock redirects the placement to the adjacent cell if the target isn't replaceable.
-        if (!ImpactStructures.isBlockTriviallyReplaceable(
-                world,
-                x,
-                y,
-                z,
-                player,
-            ) || world.getTileEntity(
-                x,
-                y,
-                z,
-            ) != null
-        ) {
-            return BlueprintPlacementResult.OCCUPIED
+        placementObstruction(
+            world = world,
+            player = player,
+            position = position,
+        )?.let {
+            return it
         }
         if (source?.takeOne(
                 stack,
@@ -387,6 +529,39 @@ internal object BlueprintWorldUse {
             )
         }
         return result
+    }
+
+    private fun placementObstruction(
+        world: World,
+        player: EntityPlayer,
+        position: ScenePosition,
+    ): BlueprintPlacementResult? {
+        val (x, y, z) = position
+        if (!world.canMineBlock(
+                player,
+                x,
+                y,
+                z,
+            )
+        ) {
+            return BlueprintPlacementResult.PROTECTED
+        }
+        // ItemBlock redirects the placement to the adjacent cell if the target isn't replaceable.
+        if (!ImpactStructures.isBlockTriviallyReplaceable(
+                world,
+                x,
+                y,
+                z,
+                player,
+            ) || world.getTileEntity(
+                x,
+                y,
+                z,
+            ) != null
+        ) {
+            return BlueprintPlacementResult.OCCUPIED
+        }
+        return null
     }
 
     private fun matchesBlock(
