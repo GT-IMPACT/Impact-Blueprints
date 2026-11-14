@@ -31,7 +31,6 @@ import space.impact.iblueprints.integration.structures.SceneBlueprint
 import space.impact.iblueprints.integration.structures.StructurePreviewCollector
 import space.impact.iblueprints.scene.BlockScene
 import space.impact.iblueprints.scene.ScenePosition
-import space.impact.structures.ImpactStructures
 import space.impact.structures.StructureEvent
 import space.impact.structures.alignment.constructable.ChannelDataAccessor
 import space.impact.structures.alignment.constructable.IConstructable
@@ -249,8 +248,7 @@ internal object GregTechScenes {
                 actor = actor,
                 candidates = alternativeCandidates,
             )
-            ImpactStructures.enableInstrument(collector)
-            try {
+            collector.collect(constructing = savedPlan == null) {
                 if (savedPlan == null) {
                     // Creative construction chooses the casing wherever a casing is allowed.
                     constructable.construct(
@@ -295,8 +293,6 @@ internal object GregTechScenes {
                 collector.finish(hatchChoices::track)
                 hatchChoices.initializeHatchTextures()
                 scene.simulation = hatchChoices
-            } finally {
-                ImpactStructures.disableInstrument()
             }
             check(scene.positions().size > 1 || scene.elements.isNotEmpty()) {
                 "The controller did not produce a preview structure"

@@ -1,12 +1,14 @@
 package space.impact.iblueprints.integration.structures
 
 import java.util.concurrent.ConcurrentHashMap
+import java.util.function.BooleanSupplier
 import net.minecraft.item.ItemStack
 import net.minecraftforge.oredict.OreDictionary
 import org.apache.logging.log4j.LogManager
 import space.impact.iblueprints.scene.BlockScene
 import space.impact.iblueprints.scene.SceneElement
 import space.impact.iblueprints.scene.ScenePosition
+import space.impact.structures.ImpactStructures
 import space.impact.structures.StructureEvent
 import space.impact.structures.structure.AutoPlaceEnvironment
 import space.impact.structures.structure.IStructureElement
@@ -22,6 +24,7 @@ internal class StructurePreviewCollector(
 ) {
 
     private val elements: MutableMap<ScenePosition, IStructureElement<Any>> = linkedMapOf()
+    private var checkingPiece = false
     // With no hatches in stock, hatch-or-casing elements expose their casing alternatives.
     private val placementEnvironment = AutoPlaceEnvironment.fromLegacy(
         PreviewItemSource(emptyList()),
@@ -29,8 +32,26 @@ internal class StructurePreviewCollector(
         actor::addChatMessage,
     )
 
+    internal fun collect(
+        constructing: Boolean,
+        visit: () -> Unit,
+    ) {
+        ImpactStructures.enableInstrument(this)
+        if (constructing) {
+            constructionCollector.set(this)
+        }
+        try {
+            visit()
+        } finally {
+            if (constructing) {
+                constructionCollector.remove()
+            }
+            ImpactStructures.disableInstrument()
+        }
+    }
+
     internal fun onElement(event: StructureEvent.StructureElementVisitedEvent) {
-        if (event.world !== scene.world) {
+        if (checkingPiece || event.world !== scene.world) {
             return
         }
         val position = ScenePosition(
@@ -150,7 +171,23 @@ internal class StructurePreviewCollector(
         }
     }
 
-    private companion object {
-        val unavailablePlacementClasses = ConcurrentHashMap.newKeySet<String>()
+    companion object {
+        private val unavailablePlacementClasses = ConcurrentHashMap.newKeySet<String>()
+        private val constructionCollector = ThreadLocal<StructurePreviewCollector>()
+
+        @JvmStatic
+        public fun checkPiece(check: BooleanSupplier): Boolean {
+            val collector = constructionCollector.get()
+            if (collector == null || collector.checkingPiece) {
+                return check.asBoolean
+            }
+            // Validation can probe pieces outside the layout requested by the construction trigger.
+            collector.checkingPiece = true
+            try {
+                return check.asBoolean
+            } finally {
+                collector.checkingPiece = false
+            }
+        }
     }
 }

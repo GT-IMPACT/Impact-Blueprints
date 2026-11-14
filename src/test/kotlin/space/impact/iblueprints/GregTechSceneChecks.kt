@@ -120,6 +120,7 @@ import space.impact.structures.util.InventoryUtility
 import java.io.File
 import java.nio.file.Files
 import java.lang.reflect.Proxy
+import java.util.function.BooleanSupplier
 import java.util.function.Supplier
 import kotlinx.coroutines.runBlocking
 
@@ -614,6 +615,59 @@ internal object GregTechSceneChecks {
         checkAlternativeGroups()
         checkPickedFaces()
         checkWildcardAlternatives()
+        checkPreviewConstructionPositions()
+    }
+
+    private fun checkPreviewConstructionPositions() {
+        BlockScene("Variable-length preview").use { scene ->
+            val collector = StructurePreviewCollector(
+                scene = scene,
+                context = Any(),
+                trigger = ItemStack(Blocks.stone),
+                actor = PreviewPlayer(scene.world),
+                candidates = emptyList(),
+            )
+            val element = StructureUtility.ofBlock<Any>(
+                Blocks.stone,
+                0,
+            )
+            val requiredPosition = ScenePosition(
+                x = 1,
+                y = 64,
+                z = 0,
+            )
+            val checkedPosition = requiredPosition.copy(x = 2)
+            fun visit(position: ScenePosition) {
+                StructureEvent.StructureElementVisitedEvent.fireEvent(
+                    scene.world,
+                    position.x,
+                    position.y,
+                    position.z,
+                    0,
+                    0,
+                    0,
+                    element,
+                )
+            }
+
+            collector.collect(constructing = true) {
+                assertTrue(StructurePreviewCollector.checkPiece(BooleanSupplier {
+                    visit(checkedPosition)
+                    true
+                }))
+                visit(requiredPosition)
+            }
+            collector.finish { _, _, _ ->
+                {
+                    emptyList()
+                }
+            }
+            assertEquals(
+                setOf(requiredPosition),
+                scene.elements.keys,
+            )
+            assertTrue(scene.elements.getValue(requiredPosition).unresolved)
+        }
     }
 
     private fun checkWildcardAlternatives() {
