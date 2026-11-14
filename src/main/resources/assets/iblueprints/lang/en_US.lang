@@ -49,6 +49,7 @@ iblueprints.projector.missing=Put a hologram projector in your inventory.
 iblueprints.projector.requires_server=Saving requires this version of Impact Blueprints on the server.
 iblueprints.projector.changed=The projector has changed. Check your inventory and try again.
 iblueprints.projector.saved=Structure channels saved to the hologram projector.
+iblueprints.projector.clear_hint=Shift + right-click in air to clear the saved layout and channels.
 iblueprints.blueprint.save=Record
 iblueprints.blueprint.missing=Put a structure blueprint in your inventory.
 iblueprints.blueprint.saved=Structure recorded on the blueprint.

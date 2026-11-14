@@ -49,6 +49,7 @@ iblueprints.projector.missing=Положи голограф в инвентар�
 iblueprints.projector.requires_server=Для сохранения на сервере нужна эта версия Impact Blueprints.
 iblueprints.projector.changed=Голограф изменился. Проверь инвентарь и попробуй снова.
 iblueprints.projector.saved=Каналы структуры сохранены в голограф.
+iblueprints.projector.clear_hint=Shift + ПКМ в воздухе — очистить сохранённую раскладку и каналы.
 iblueprints.blueprint.save=Записать
 iblueprints.blueprint.missing=Положите чертёж в инвентарь.
 iblueprints.blueprint.saved=Структура записана на чертёж.

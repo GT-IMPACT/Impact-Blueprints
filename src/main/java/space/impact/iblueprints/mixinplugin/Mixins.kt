@@ -6,6 +6,15 @@ import com.gtnewhorizon.gtnhmixins.builders.MixinBuilder
 
 public enum class Mixins(private val mixinBuilder: MixinBuilder) : IMixins {
 
+    PROJECTOR_LAYOUT_RESET(
+        MixinBuilder("Clear the saved projector layout on sneak-right-click in air")
+            .setPhase(Phase.LATE)
+            .addRequiredMod(TargetedMod.IMPACT_API)
+            .addCommonMixins("structures.ItemConstructableTriggerMixin")
+            .setApplyIf {
+                true
+            },
+    ),
     BUILT_STRUCTURE_BLUEPRINT(
         MixinBuilder("Copy a successfully checked GregTech structure into a blueprint")
             .setPhase(Phase.LATE)

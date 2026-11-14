@@ -59,6 +59,7 @@ import net.minecraft.world.World
 import net.minecraftforge.common.config.Configuration
 import net.minecraftforge.common.util.ForgeDirection
 import net.minecraftforge.common.MinecraftForge
+import net.minecraftforge.event.entity.player.PlayerInteractEvent
 import net.minecraftforge.oredict.OreDictionary
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -85,6 +86,7 @@ import space.impact.iblueprints.integration.structures.BlueprintPlacement
 import space.impact.iblueprints.integration.structures.BlueprintPlacementResult
 import space.impact.iblueprints.integration.structures.BlueprintWorldUse
 import space.impact.iblueprints.integration.structures.PreviewPlayer
+import space.impact.iblueprints.integration.structures.ProjectorProgramming
 import space.impact.iblueprints.integration.structures.StructurePreviewCollector
 import space.impact.iblueprints.item.BlankBlueprintItem
 import space.impact.iblueprints.item.StructureBlueprintItem
@@ -1871,6 +1873,10 @@ internal object GregTechSceneChecks {
                 "length",
             ),
         )
+        checkProjectorReset(
+            scene = scene,
+            projector = savedProjector,
+        )
         val legacy = blueprint.copy()
         legacy.tagCompound.removeTag(StructureBlueprintItem.RECIPE_TAG)
         imported.inventory.setStackInSlot(
@@ -2017,6 +2023,47 @@ internal object GregTechSceneChecks {
             true,
         )
         assertTrue(drops.single().item === BlankBlueprintItem)
+    }
+
+    private fun checkProjectorReset(
+        scene: BlockScene,
+        projector: ItemStack,
+    ) {
+        fun usesSavedLayout(stack: ItemStack): Boolean {
+            val world = scene.world
+            val (x, y, z) = requireNotNull(scene.simulation).origin
+            val player = PreviewPlayer(world)
+            player.isSneaking = true
+            player.inventory.mainInventory[player.inventory.currentItem] = stack
+            return PlayerInteractEvent(
+                player,
+                PlayerInteractEvent.Action.RIGHT_CLICK_BLOCK,
+                x,
+                y,
+                z,
+                ForgeDirection.SOUTH.ordinal,
+                world,
+            ).also(BlueprintWorldUse::onUse).isCanceled
+        }
+
+        assertTrue(usesSavedLayout(projector))
+        assertTrue(ProjectorProgramming.hasLayout(projector))
+        val cleared = ProjectorProgramming.clearedCopy(projector)
+        assertFalse(cleared.hasTagCompound())
+        assertFalse(ProjectorProgramming.hasLayout(cleared))
+        assertFalse(usesSavedLayout(cleared))
+        assertTrue(ProjectorProgramming.hasLayout(projector))
+        assertTrue(ChannelDataAccessor.hasSubChannel(projector))
+
+        val named = projector.copy()
+        named.setStackDisplayName("Projector name")
+        val clearedNamed = ProjectorProgramming.clearedCopy(named)
+        assertFalse(ProjectorProgramming.hasLayout(clearedNamed))
+        assertFalse(ChannelDataAccessor.hasSubChannel(clearedNamed))
+        assertEquals(
+            named.displayName,
+            clearedNamed.displayName,
+        )
     }
 
     private fun checkBlueprintProvider(plan: NBTTagCompound) {
