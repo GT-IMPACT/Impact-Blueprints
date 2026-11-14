@@ -117,6 +117,7 @@ internal object BuiltStructureCapture {
                 } else {
                     null
                 },
+                hatchTexture = BlueprintHatch.texture(placedTile),
             ))
         }
         return SceneBlueprint.capture(

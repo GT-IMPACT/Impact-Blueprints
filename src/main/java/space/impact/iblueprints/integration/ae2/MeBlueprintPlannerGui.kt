@@ -12,6 +12,7 @@ import net.minecraft.util.ResourceLocation
 import net.minecraft.util.StatCollector
 import org.apache.logging.log4j.LogManager
 import org.lwjgl.opengl.GL11
+import space.impact.iblueprints.integration.gregtech.GregTechScenes
 import space.impact.iblueprints.integration.modularui.SceneViewer
 import space.impact.iblueprints.integration.nei.PlannerRecipeSelection
 import space.impact.iblueprints.integration.structures.SceneBlueprint
@@ -362,28 +363,42 @@ internal class MeBlueprintPlannerGui(
             if (plan != null && entry != null) {
                 preview = try {
                     val details = "entry=${entry.id}"
+                    val capturedLayout = SceneViewer.isCapturedLayout(
+                        entry = entry,
+                        plan = plan,
+                    )
                     val view = tracePlannerStep(
                         step = "me.previewBuild",
                         details = details,
                     ) {
-                        SceneView(entry.build(SceneBlueprint.channels(plan)))
+                        val scene = if (capturedLayout) {
+                            GregTechScenes.create(
+                                controller = entry.item(),
+                                values = emptyMap(),
+                                savedPlan = plan,
+                            )
+                        } else {
+                            entry.build(SceneBlueprint.channels(plan))
+                        }
+                        SceneView(scene)
                     }
-                    view.also {
+                    if (!capturedLayout) {
                         try {
                             tracePlannerStep(
                                 step = "me.previewRestore",
                                 details = details,
                             ) {
                                 SceneBlueprint.restore(
-                                    view = it,
+                                    view = view,
                                     plan = plan,
                                 )
                             }
                         } catch (failure: Throwable) {
-                            closePreview(it.scene)
+                            closePreview(view.scene)
                             throw failure
                         }
                     }
+                    view
                 } catch (failure: Exception) {
                     LogManager.getLogger("ImpactBlueprints").warn("Cannot preview structure ${entry.id}", failure)
                     null

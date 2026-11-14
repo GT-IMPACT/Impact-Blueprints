@@ -9,4 +9,5 @@ internal data class BlueprintPlacement(
     val stack: ItemStack,
     val hatchFacing: ForgeDirection?,
     val doorMetadata: Int? = null,
+    val hatchTexture: Int? = null,
 )

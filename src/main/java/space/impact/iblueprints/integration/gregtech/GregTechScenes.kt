@@ -25,6 +25,7 @@ import org.apache.logging.log4j.LogManager
 import space.impact.iblueprints.api.SceneChannel
 import space.impact.iblueprints.api.SceneEntry
 import space.impact.iblueprints.api.SceneRegistry
+import space.impact.iblueprints.integration.structures.BlueprintPlacement
 import space.impact.iblueprints.integration.structures.PreviewItemSource
 import space.impact.iblueprints.integration.structures.PreviewPlayer
 import space.impact.iblueprints.integration.structures.SceneBlueprint
@@ -47,8 +48,7 @@ internal object GregTechScenes {
 
     internal fun refreshHatchTexture(hatch: GT_MetaTileEntity_Hatch) {
         // GT can restore the server flag from NBT even in a client scene.
-        val textureId = (hatch.texturePage.toInt() shl 7) or (hatch.updateData.toInt() and 127)
-        hatch.updateTexture(textureId)
+        hatch.updateTexture(BlueprintHatch.texture(hatch))
     }
 
     private val metatileCandidates: List<ItemStack> by lazy {
@@ -232,13 +232,20 @@ internal object GregTechScenes {
                     channel.normalize(values[channel.id] ?: channel.minimum),
                 )
             }
-            if (savedPlan != null) {
-                restoreBlocks(
-                    scene = scene,
-                    origin = origin,
+            val savedPlacements = if (savedPlan != null) {
+                require(SceneBlueprint.isValid(savedPlan))
+                SceneBlueprint.placements(
                     plan = savedPlan,
+                    origin = origin,
+                    facing = ExtendedFacing.of(ForgeDirection.SOUTH),
                 )
+            } else {
+                emptyList()
             }
+            restoreBlocks(
+                scene = scene,
+                placements = savedPlacements,
+            )
             val source = PreviewItemSource(constructionCandidates)
             val actor = PreviewPlayer(scene.world)
             val collector = StructurePreviewCollector(
@@ -298,6 +305,7 @@ internal object GregTechScenes {
                 "The controller did not produce a preview structure"
             }
             scene.world.isRemote = true
+            val savedByPosition = savedPlacements.associateBy(BlueprintPlacement::position)
             for (position in scene.positions()) {
                 val hatchTile = scene.world.getTileEntity(
                     x = position.x,
@@ -306,6 +314,19 @@ internal object GregTechScenes {
                 ) as? IGregTechTileEntity ?: continue
                 val hatch = hatchTile.metaTileEntity as? GT_MetaTileEntity_Hatch ?: continue
                 refreshHatchTexture(hatch)
+                val placement = savedByPosition[position] ?: continue
+                placement.hatchFacing?.let {
+                    BlueprintHatch.orient(
+                        tile = hatchTile as TileEntity,
+                        direction = it,
+                    )
+                }
+                placement.hatchTexture?.let {
+                    BlueprintHatch.applyTexture(
+                        hatch = hatch,
+                        texture = it,
+                    )
+                }
             }
             return scene
         } catch (failure: Throwable) {
@@ -316,15 +337,9 @@ internal object GregTechScenes {
 
     private fun restoreBlocks(
         scene: BlockScene,
-        origin: ScenePosition,
-        plan: NBTTagCompound,
+        placements: List<BlueprintPlacement>,
     ) {
-        require(SceneBlueprint.isValid(plan))
-        for (placement in SceneBlueprint.placements(
-            plan = plan,
-            origin = origin,
-            facing = ExtendedFacing.of(ForgeDirection.SOUTH),
-        )) {
+        for (placement in placements) {
             val (position, stack, direction) = placement
             val item = stack.item as? ItemBlock ?: error("Blueprint contains a non-block item")
             val block = Block.getBlockFromItem(item)

@@ -34,6 +34,14 @@ public object SceneViewer {
 
     private const val ALTERNATIVES_WIDTH = 144
 
+    internal fun isCapturedLayout(
+        entry: SceneEntry,
+        plan: NBTTagCompound,
+    ): Boolean {
+        return SceneBlueprint.channels(plan).isEmpty() && entry.id.startsWith("$MODID:metatile_") &&
+            Loader.isModLoaded("gregtech")
+    }
+
     @JvmStatic
     public fun open(entry: SceneEntry) {
         open(
@@ -95,8 +103,10 @@ public object SceneViewer {
     ): ModularPanel {
         val editing = onLayoutChanged != null
         val details = "entry=${entry.id} editing=$editing"
-        val capturedLayout = savedPlan != null && SceneBlueprint.channels(savedPlan).isEmpty() &&
-            entry.id.startsWith("$MODID:metatile_") && Loader.isModLoaded("gregtech")
+        val capturedLayout = savedPlan != null && isCapturedLayout(
+            entry = entry,
+            plan = savedPlan,
+        )
         val view = tracePlannerStep(
             step = "viewer.build",
             details = details,

@@ -354,6 +354,22 @@ internal class GregTechHatchChoices(
         return ForgeDirection.getOrientation(tile.frontFacing.toInt())
     }
 
+    override fun hatchTexture(position: ScenePosition): Int? {
+        val hatch = hatchTile(position)?.metaTileEntity as? GT_MetaTileEntity_Hatch ?: return null
+        return BlueprintHatch.texture(hatch)
+    }
+
+    override fun setHatchTexture(
+        position: ScenePosition,
+        texture: Int,
+    ) {
+        val hatch = hatchTile(position)?.metaTileEntity as? GT_MetaTileEntity_Hatch ?: return
+        BlueprintHatch.applyTexture(
+            hatch = hatch,
+            texture = texture,
+        )
+    }
+
     override fun nextHatchFacing(position: ScenePosition): ForgeDirection? {
         val tile = hatchTile(position) ?: return null
         val sides = ForgeDirection.VALID_DIRECTIONS

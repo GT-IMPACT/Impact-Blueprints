@@ -30,6 +30,13 @@ internal interface ISceneSimulation {
 
     fun hatchFacing(position: ScenePosition): ForgeDirection?
 
+    fun hatchTexture(position: ScenePosition): Int?
+
+    fun setHatchTexture(
+        position: ScenePosition,
+        texture: Int,
+    )
+
     fun nextHatchFacing(position: ScenePosition): ForgeDirection?
 
     fun setHatchFacing(

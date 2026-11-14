@@ -1,7 +1,9 @@
 package space.impact.iblueprints
 
+import gregtech.api.enums.Textures
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity
 import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_EnhancedMultiBlockBase
+import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_Hatch
 import ic2.core.block.BlockIC2Door
 import ic2.core.init.InternalName
 import ic2.core.item.block.ItemIC2Door
@@ -253,6 +255,21 @@ internal object BuiltStructureCaptureChecks {
             assertFalse(checked)
 
             machine.mMachine = true
+            val hatchPosition = structurePositions.first {
+                scene.simulation?.hatchFacing(it) != null
+            }
+            val hatchTile = world.getTileEntity(
+                x = hatchPosition.x,
+                y = hatchPosition.y,
+                z = hatchPosition.z,
+            ) as IGregTechTileEntity
+            val hatch = hatchTile.metaTileEntity as GT_MetaTileEntity_Hatch
+            val texturePage = 8
+            val textureIndex = 127
+            val copiedTexture = (texturePage shl 7) or textureIndex
+            val page = Textures.BlockIcons.casingTexturePages[texturePage]
+            val previousTexture = page[textureIndex]
+            val originalTexture = BlueprintHatch.texture(hatch)
             val plan = requireNotNull(BuiltStructureCapture.capture(machine = machine) {
                 // A failed optional piece must not add unrelated neighboring blocks.
                 BuiltStructureCapture.checkPiece(
@@ -286,6 +303,7 @@ internal object BuiltStructureCaptureChecks {
                         machine.mMachine
                     },
                 )
+                hatch.updateTexture(copiedTexture)
             })
             assertFalse(ImpactStructures.isInstrumentEnabled())
             val placements = SceneBlueprint.placements(
@@ -299,6 +317,10 @@ internal object BuiltStructureCaptureChecks {
                     it.position
                 }.toSet(),
             )
+            assertEquals(
+                copiedTexture,
+                placements.single { it.position == hatchPosition }.hatchTexture,
+            )
             for ((position, stack, direction) in placements) {
                 assertTrue(stack.isItemEqual(scene.item(position)))
                 assertEquals(
@@ -310,22 +332,32 @@ internal object BuiltStructureCaptureChecks {
                     direction,
                 )
             }
-            GregTechScenes.create(
-                controller = requireNotNull(SceneBlueprint.controller(plan)),
-                values = emptyMap(),
-                savedPlan = plan,
-            ).use { restored ->
-                assertEquals(
-                    structurePositions,
-                    restored.positions().toSet(),
-                )
-                for (position in structurePositions) {
-                    assertTrue(scene.item(position)?.isItemEqual(restored.item(position)) == true)
+            page[textureIndex] = Textures.BlockIcons.MACHINE_CASINGS[0][0]
+            try {
+                GregTechScenes.create(
+                    controller = requireNotNull(SceneBlueprint.controller(plan)),
+                    values = emptyMap(),
+                    savedPlan = plan,
+                ).use { restored ->
                     assertEquals(
-                        scene.simulation?.hatchFacing(position),
-                        restored.simulation?.hatchFacing(position),
+                        copiedTexture,
+                        restored.simulation?.hatchTexture(hatchPosition),
                     )
+                    assertEquals(
+                        structurePositions,
+                        restored.positions().toSet(),
+                    )
+                    for (position in structurePositions) {
+                        assertTrue(scene.item(position)?.isItemEqual(restored.item(position)) == true)
+                        assertEquals(
+                            scene.simulation?.hatchFacing(position),
+                            restored.simulation?.hatchFacing(position),
+                        )
+                    }
                 }
+            } finally {
+                page[textureIndex] = previousTexture
+                hatch.updateTexture(originalTexture)
             }
             checkInventory(
                 scene = scene,

@@ -55,6 +55,7 @@ internal object SceneBlueprint {
                 },
                 hatchFacing = simulation.hatchFacing(position),
                 doorMetadata = doorMetadata,
+                hatchTexture = simulation.hatchTexture(position),
             )
         }
         return capture(
@@ -95,6 +96,12 @@ internal object SceneBlueprint {
                         from = facing.direction,
                         to = previewDirection,
                     ),
+                )
+            }
+            placement.hatchTexture?.let {
+                item.setInteger(
+                    "hatchTexture",
+                    it,
                 )
             }
             val paletteIndex = paletteIndices.getOrPut(item) {
@@ -181,7 +188,7 @@ internal object SceneBlueprint {
         for (index in 0 until palette.tagCount()) {
             if (!isItemTagValid(
                     tag = palette.getCompoundTagAt(index),
-                    allowDoorMetadata = true,
+                    paletteEntry = true,
                 )
             ) {
                 return false
@@ -325,13 +332,22 @@ internal object SceneBlueprint {
                 position = position,
                 stack = item,
                 refresh = false,
+                preferredFacing = side,
             )
-            if (side != null && view.scene.item(position)?.isItemEqual(item) == true) {
-                view.setHatchFacing(
-                    position = position,
-                    facing = side,
-                    refresh = false,
-                )
+            if (view.scene.item(position)?.isItemEqual(item) == true) {
+                if (side != null) {
+                    view.setHatchFacing(
+                        position = position,
+                        facing = side,
+                        refresh = false,
+                    )
+                }
+                placement.hatchTexture?.let {
+                    simulation.setHatchTexture(
+                        position = position,
+                        texture = it,
+                    )
+                }
             }
         }
         view.refreshLayout()
@@ -396,6 +412,11 @@ internal object SceneBlueprint {
                             from = previewDirection,
                             to = facing.direction,
                         )
+                    } else {
+                        null
+                    },
+                    hatchTexture = if (entry.hasKey("hatchTexture")) {
+                        entry.getInteger("hatchTexture")
                     } else {
                         null
                     },
@@ -479,14 +500,23 @@ internal object SceneBlueprint {
 
     private fun isItemTagValid(
         tag: NBTTagCompound,
-        allowDoorMetadata: Boolean = false,
+        paletteEntry: Boolean = false,
     ): Boolean {
         val name = tag.getString("item")
-        val keyCount = if (allowDoorMetadata && tag.hasKey("doorMeta")) {
+        val keyCount = if (paletteEntry && tag.hasKey("doorMeta")) {
             if (name != BlueprintDoor.BLOCK_NAME || !tag.hasKey(
                     "doorMeta",
                     NBT.TAG_INT,
                 ) || tag.getInteger("doorMeta") !in 0..15
+            ) {
+                return false
+            }
+            3
+        } else if (paletteEntry && tag.hasKey("hatchTexture")) {
+            if (!tag.hasKey(
+                    "hatchTexture",
+                    NBT.TAG_INT,
+                ) || tag.getInteger("hatchTexture") !in 0..0x3FFF
             ) {
                 return false
             }
