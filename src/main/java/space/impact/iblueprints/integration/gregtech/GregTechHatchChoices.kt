@@ -1,10 +1,12 @@
 package space.impact.iblueprints.integration.gregtech
 
 import gregtech.api.GregTech_API
+import gregtech.api.enums.Casings
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity
 import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_Hatch
 import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_MultiBlockBase
 import gregtech.api.util.GTStructureUtility
+import gregtech.common.tileentities.machines.multi.GT_MetaTileEntity_Cleanroom
 import java.util.IdentityHashMap
 import java.util.concurrent.ConcurrentHashMap
 import net.minecraft.item.ItemBlock
@@ -13,6 +15,7 @@ import net.minecraft.nbt.NBTTagCompound
 import net.minecraft.tileentity.TileEntity
 import net.minecraftforge.common.util.ForgeDirection
 import org.apache.logging.log4j.LogManager
+import space.impact.iblueprints.integration.structures.BlueprintDoor
 import space.impact.iblueprints.integration.structures.PreviewPlayer
 import space.impact.iblueprints.planner.tracePlannerStep
 import space.impact.iblueprints.scene.BlockScene
@@ -31,6 +34,21 @@ internal class GregTechHatchChoices(
 
     private val elements = hashMapOf<ScenePosition, IStructureElement<Any>>()
     private val originals = hashMapOf<ScenePosition, SceneBlockState>()
+    private val cleanroom by lazy(LazyThreadSafetyMode.NONE) {
+        val controller = scene.world.getTileEntity(
+            x = origin.x,
+            y = origin.y,
+            z = origin.z,
+        ) as? IGregTechTileEntity
+        (controller?.metaTileEntity as? GT_MetaTileEntity_Cleanroom)?.let {
+            CleanroomAlternatives(
+                scene = scene,
+                machine = it,
+                trigger = trigger,
+                elements = elements,
+            )
+        }
+    }
     private val hatches by lazy(LazyThreadSafetyMode.NONE) {
         GregTech_API.METATILEENTITIES.filterIsInstance<GT_MetaTileEntity_Hatch>()
     }
@@ -75,6 +93,10 @@ internal class GregTechHatchChoices(
         snapshot: SceneElement,
     ): () -> List<ItemStack> {
         elements[position] = element
+        val placementChoices = snapshot.placementChoices
+        snapshot.placementChoices = {
+            placementChoices?.invoke().orEmpty() + cleanroom?.at(position).orEmpty()
+        }
         return {
             find(
                 position = position,
@@ -148,7 +170,14 @@ internal class GregTechHatchChoices(
         position: ScenePosition,
         stack: ItemStack,
     ): Boolean {
-        return position != origin && position in elements && stack.item is ItemBlock
+        if (position == origin || position !in elements) {
+            return false
+        }
+        if (BlueprintDoor.isMaterial(stack)) {
+            return cleanroom?.doorStates(position) != null &&
+                scene.elements[position]?.alternatives()?.any(stack::isItemEqual) == true
+        }
+        return stack.item is ItemBlock
     }
 
     override fun replaceAll(
@@ -158,6 +187,7 @@ internal class GregTechHatchChoices(
         var position = targets.keys.firstOrNull() ?: return false
         val previous = linkedMapOf<ScenePosition, SceneBlockState>()
         val staged = linkedMapOf<ScenePosition, SceneBlockState>()
+        val door = BlueprintDoor.isMaterial(stack)
         val probe = lazy {
             scene.world.copyForProbe()
         }
@@ -173,6 +203,28 @@ internal class GregTechHatchChoices(
                 ) {
                     return false
                 }
+                if (door) {
+                    val adapter = cleanroom ?: return false
+                    val states = adapter.doorStates(position) ?: return false
+                    if (states.keys.any { it in staged || doorPartner(it) != null }) {
+                        return false
+                    }
+                    val restored = states.mapValues { (part, state) ->
+                        originals[part]?.takeIf {
+                            BlueprintDoor.isReinforced(it.block) &&
+                                it.metadata and BlueprintDoor.UPPER_HALF == state.metadata and BlueprintDoor.UPPER_HALF
+                        } ?: state
+                    }
+                    if (!adapter.acceptsDoor(
+                            probe = probe.value,
+                            states = restored,
+                        )
+                    ) {
+                        return false
+                    }
+                    staged.putAll(restored)
+                    continue
+                }
                 val replacement = if (snapshot.matchesOriginal(stack)) {
                     originals[position] ?: continue
                 } else {
@@ -187,8 +239,24 @@ internal class GregTechHatchChoices(
                         preferredFacing = facing,
                     ) ?: return false
                 }
-                previous[position] = scene.world.blockState(position) ?: return false
                 staged[position] = replacement
+            }
+            if (!door) {
+                for (target in staged.keys.toList()) {
+                    val partner = doorPartner(target) ?: continue
+                    if (partner in elements && partner !in staged) {
+                        staged[partner] = originals[partner]?.takeUnless {
+                            BlueprintDoor.isReinforced(it.block)
+                        } ?: SceneBlockState(
+                            block = Casings.PLASCRETE.block,
+                            metadata = Casings.PLASCRETE.metadata,
+                            tileData = null,
+                        )
+                    }
+                }
+            }
+            for (target in staged.keys) {
+                previous[target] = scene.world.blockState(target) ?: return false
             }
             val applied = mutableListOf<ScenePosition>()
             try {
@@ -223,7 +291,8 @@ internal class GregTechHatchChoices(
                 throw failure
             }
             for ((target, original) in previous) {
-                if (scene.elements.getValue(target).matchesOriginal(stack)) {
+                val current = scene.item(target)
+                if (current != null && scene.elements.getValue(target).matchesOriginal(current)) {
                     originals.remove(target)
                 } else {
                     originals.putIfAbsent(
@@ -245,6 +314,20 @@ internal class GregTechHatchChoices(
                 probe.value.clear()
             }
         }
+    }
+
+    private fun doorPartner(position: ScenePosition): ScenePosition? {
+        val state = scene.world.blockState(position) ?: return null
+        if (!BlueprintDoor.isReinforced(state.block)) {
+            return null
+        }
+        val upper = state.metadata and BlueprintDoor.UPPER_HALF != 0
+        val partner = position.copy(y = position.y + if (upper) -1 else 1)
+        val other = scene.world.blockState(partner) ?: return null
+        if (other.block !== state.block || (other.metadata and BlueprintDoor.UPPER_HALF != 0) == upper) {
+            return null
+        }
+        return partner
     }
 
     private fun setSceneState(

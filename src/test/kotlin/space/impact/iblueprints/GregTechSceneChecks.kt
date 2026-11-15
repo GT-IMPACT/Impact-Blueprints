@@ -40,6 +40,7 @@ import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_Hatch_Outpu
 import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_Hatch_OutputBus_ME
 import gregtech.common.blocks.GT_Item_Machines
 import gregtech.common.GT_Server
+import gregtech.common.tileentities.machines.multi.GT_MetaTileEntity_Cleanroom
 import gregtech.common.tileentities.machines.multi.GT_MetaTileEntity_VacuumFreezer
 import gregtech.common.tileentities.machines.multi.GT_MetaTileEntity_DistillationTower
 import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_Hatch_Muffler
@@ -88,6 +89,7 @@ import space.impact.iblueprints.integration.structures.SaveProjectorChannels
 import space.impact.iblueprints.integration.structures.SaveStructureBlueprint
 import space.impact.iblueprints.integration.structures.SceneBlueprint
 import space.impact.iblueprints.integration.structures.BlueprintPlacement
+import space.impact.iblueprints.integration.structures.BlueprintDoor
 import space.impact.iblueprints.integration.structures.BlueprintPlacementResult
 import space.impact.iblueprints.integration.structures.BlueprintWorldUse
 import space.impact.iblueprints.integration.structures.HatchHintFace
@@ -623,6 +625,68 @@ internal object GregTechSceneChecks {
         checkPickedFaces()
         checkWildcardAlternatives()
         checkPreviewConstructionPositions()
+        checkCleanroomAlternatives()
+    }
+
+    private fun checkCleanroomAlternatives() {
+        register(
+            id = 32019,
+            prototype = GT_MetaTileEntity_Cleanroom("test_cleanroom"),
+        )
+        val previousReinforced = GregTech_API.sBlockReinforced
+        val previousGlass = GregTech_API.sBlockCasings9
+        GregTech_API.sBlockReinforced = Blocks.stained_hardened_clay
+        GregTech_API.sBlockCasings9 = Blocks.stained_glass
+        try {
+            GregTechScenes.create(
+                controller = GregTech_API.METATILEENTITIES[32019].getStackForm(1),
+                values = emptyMap(),
+            ).use { scene ->
+                val view = SceneView(scene)
+                val origin = requireNotNull(scene.simulation).origin
+                val wall = origin.copy(
+                    x = scene.bounds().min.x,
+                    y = origin.y - 2,
+                )
+                val above = wall.copy(y = wall.y + 1)
+                val floor = wall.copy(y = scene.bounds().min.y)
+                val corner = wall.copy(z = scene.bounds().min.z)
+                val casing = requireNotNull(scene.item(wall))
+                val glass = ItemStack(
+                    Casings.CLEANROOM_GLASS.block,
+                    1,
+                    Casings.CLEANROOM_GLASS.metadata,
+                )
+                val door = requireNotNull(BlueprintDoor.material())
+                val alternatives = view.commonAlternatives(setOf(wall))
+                assertTrue(alternatives.any(glass::isItemEqual))
+                assertTrue(alternatives.any(door::isItemEqual))
+                assertTrue(view.commonAlternatives(setOf(floor)).none(door::isItemEqual))
+                assertTrue(view.commonAlternatives(setOf(above)).none(door::isItemEqual))
+                assertTrue(view.commonAlternatives(setOf(corner)).none(glass::isItemEqual))
+                assertTrue(view.replaceBlock(
+                    position = wall,
+                    stack = glass,
+                ))
+                assertTrue(glass.isItemEqual(scene.item(wall)))
+                assertTrue(view.replaceBlock(
+                    position = wall,
+                    stack = door,
+                ))
+                assertTrue(door.isItemEqual(scene.item(wall)))
+                assertTrue(door.isItemEqual(scene.item(above)))
+                assertTrue(scene.isUpperDoorHalf(above))
+                assertTrue(view.replaceBlock(
+                    position = above,
+                    stack = casing,
+                ))
+                assertTrue(casing.isItemEqual(scene.item(wall)))
+                assertTrue(casing.isItemEqual(scene.item(above)))
+            }
+        } finally {
+            GregTech_API.sBlockReinforced = previousReinforced
+            GregTech_API.sBlockCasings9 = previousGlass
+        }
     }
 
     private fun checkPreviewConstructionPositions() {

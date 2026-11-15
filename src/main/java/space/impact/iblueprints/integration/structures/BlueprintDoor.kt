@@ -33,6 +33,14 @@ internal object BlueprintDoor {
         }
     }
 
+    internal fun isMaterial(stack: ItemStack): Boolean {
+        return GameData.getItemRegistry().getNameForObject(stack.item) == ITEM_NAME
+    }
+
+    internal fun closedMetadata(side: ForgeDirection): Int {
+        return directions.indexOf(side)
+    }
+
     internal fun rotate(
         metadata: Int,
         from: ForgeDirection,

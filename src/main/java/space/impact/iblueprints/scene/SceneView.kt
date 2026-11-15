@@ -290,6 +290,13 @@ public class SceneView(scene: BlockScene) {
     }
 
     internal fun refreshLayout() {
+        // A door edit can replace the neighboring half along with the selected block.
+        replacements.entries.removeIf { (target, replacement) ->
+            scene.item(target)?.isItemEqual(replacement) != true
+        }
+        hatchRotations.keys.removeIf { target ->
+            scene.simulation?.hatchFacing(target) == null
+        }
         materials = buildMaterials()
         if (hasEditedStructure) {
             validateStructure()
