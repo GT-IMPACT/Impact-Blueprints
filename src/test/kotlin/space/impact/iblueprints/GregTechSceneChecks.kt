@@ -20,9 +20,11 @@ import space.impact.iblueprints.proxy.ClientProxy
 import ic2.core.Ic2Items
 import gregtech.common.tileentities.machines.multi.GT_MetaTileEntity_AssemblyLine
 import gregtech.api.GregTech_API
+import gregtech.GT_Mod
 import gregtech.api.enums.Casings
 import gregtech.api.enums.GT_Values
 import gregtech.api.enums.ItemList
+import gregtech.api.enums.Textures
 import gregtech.api.interfaces.internal.IGT_Mod
 import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_Hatch
 import gregtech.common.tileentities.machines.multi.GT_MetaTileEntity_LargeChemicalReactor
@@ -37,6 +39,7 @@ import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_Hatch_Outpu
 import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_Hatch_Output_ME
 import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_Hatch_OutputBus_ME
 import gregtech.common.blocks.GT_Item_Machines
+import gregtech.common.GT_Server
 import gregtech.common.tileentities.machines.multi.GT_MetaTileEntity_VacuumFreezer
 import gregtech.common.tileentities.machines.multi.GT_MetaTileEntity_DistillationTower
 import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_Hatch_Muffler
@@ -46,6 +49,7 @@ import gregtech.common.tileentities.machines.multi.GT_MetaTileEntity_HeatExchang
 import gregtech.api.util.GT_Config
 import net.minecraft.block.Block
 import net.minecraft.block.material.Material
+import net.minecraft.client.renderer.texture.TextureAtlasSprite
 import net.minecraft.entity.player.EntityPlayerMP
 import net.minecraft.init.Blocks
 import net.minecraft.init.Items
@@ -73,6 +77,7 @@ import space.impact.iblueprints.integration.ae2.BlueprintProviderTile
 import space.impact.iblueprints.integration.ae2.PlannerPatterns
 import space.impact.iblueprints.integration.ae2.StructurePatternItem
 import space.impact.iblueprints.integration.gregtech.BlueprintHatch
+import space.impact.iblueprints.integration.gregtech.HatchHintIcons
 import space.impact.iblueprints.integration.nei.SceneCatalysts
 import space.impact.iblueprints.integration.nei.SceneRecipeHandler
 import space.impact.iblueprints.integration.modularui.SceneAlternativeList
@@ -85,6 +90,7 @@ import space.impact.iblueprints.integration.structures.SceneBlueprint
 import space.impact.iblueprints.integration.structures.BlueprintPlacement
 import space.impact.iblueprints.integration.structures.BlueprintPlacementResult
 import space.impact.iblueprints.integration.structures.BlueprintWorldUse
+import space.impact.iblueprints.integration.structures.HatchHintFace
 import space.impact.iblueprints.integration.structures.PreviewPlayer
 import space.impact.iblueprints.integration.structures.ProjectorProgramming
 import space.impact.iblueprints.integration.structures.StructurePreviewCollector
@@ -532,6 +538,7 @@ internal object GregTechSceneChecks {
             32014,
         ))
         checkFreezerSimulation(controller)
+        checkHatchHologramTextures()
         val gt = GT_Values.GT
         GT_Values.GT = Proxy.newProxyInstance(
             IGT_Mod::class.java.classLoader,
@@ -1008,6 +1015,75 @@ internal object GregTechSceneChecks {
             3,
             removalCalls,
         )
+    }
+
+    private fun checkHatchHologramTextures() {
+        val iconContainer = Textures.BlockIcons.OVERLAY_MAINTENANCE
+        val iconField = Textures.BlockIcons::class.java.getDeclaredField("mIcon")
+        iconField.isAccessible = true
+        val previousIcon = iconField.get(iconContainer)
+        val overlay = object : TextureAtlasSprite("test:maintenance_overlay") {}
+        val previousProxy = GT_Mod.gregtechproxy
+        val factory = Class.forName("sun.reflect.ReflectionFactory")
+        val reflectionFactory = factory.getMethod("getReflectionFactory").invoke(null)
+        val constructor = factory.getMethod(
+            "newConstructorForSerialization",
+            Class::class.java,
+            java.lang.reflect.Constructor::class.java,
+        ).invoke(
+            reflectionFactory,
+            GT_Server::class.java,
+            Any::class.java.getDeclaredConstructor(),
+        ) as java.lang.reflect.Constructor<*>
+        GT_Mod.gregtechproxy = constructor.newInstance() as GT_Server
+        iconField.set(
+            iconContainer,
+            overlay,
+        )
+        try {
+            val placement = BlueprintPlacement(
+                position = ScenePosition(
+                    x = 1,
+                    y = 64,
+                    z = 1,
+                ),
+                stack = GregTech_API.METATILEENTITIES[32000].getStackForm(1),
+                hatchFacing = ForgeDirection.EAST,
+            )
+            val baseIcon = object : TextureAtlasSprite("test:maintenance_casing") {}
+            val baseContainer = Textures.BlockIcons.MACHINE_LV_SIDE
+            val previousBase = iconField.get(baseContainer)
+            val casingPage = Textures.BlockIcons.casingTexturePages[8]
+            val previousCasing = casingPage[127]
+            try {
+                iconField.set(
+                    baseContainer,
+                    baseIcon,
+                )
+                casingPage[127] = gregtech.api.render.TextureFactory.of(baseContainer)
+                val icons = requireNotNull(HatchHintIcons.resolve(placement.copy(hatchTexture = (8 shl 7) or 127)))
+                assertEquals(
+                    overlay.iconName,
+                    (icons[ForgeDirection.EAST.ordinal] as HatchHintFace).overlays.single().iconName,
+                )
+                assertTrue(ForgeDirection.VALID_DIRECTIONS.all {
+                    val face = icons[it.ordinal] as HatchHintFace
+                    face.iconName == baseIcon.iconName && (it == ForgeDirection.EAST || face.overlays.isEmpty())
+                })
+            } finally {
+                casingPage[127] = previousCasing
+                iconField.set(
+                    baseContainer,
+                    previousBase,
+                )
+            }
+        } finally {
+            GT_Mod.gregtechproxy = previousProxy
+            iconField.set(
+                iconContainer,
+                previousIcon,
+            )
+        }
     }
 
     private fun checkWorldPlacement() {

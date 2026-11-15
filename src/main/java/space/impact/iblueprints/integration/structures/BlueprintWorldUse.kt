@@ -26,6 +26,7 @@ import net.minecraftforge.common.util.ForgeDirection
 import net.minecraftforge.event.entity.player.PlayerInteractEvent
 import space.impact.iblueprints.integration.gregtech.BlueprintHatch
 import space.impact.iblueprints.integration.gregtech.CopyBuiltStructure
+import space.impact.iblueprints.integration.gregtech.HatchHintIcons
 import space.impact.iblueprints.item.BlankBlueprintItem
 import space.impact.iblueprints.item.StructureBlueprintItem
 import space.impact.iblueprints.planner.logPlannerTrace
@@ -149,7 +150,10 @@ internal object BlueprintWorldUse {
     ) {
         ImpactStructures.startHinting(world)
         try {
-            for ((position, stack, _, doorMetadata) in placements) {
+            val gregTech = Loader.isModLoaded("gregtech")
+            val doorIcons = DoorHintIcons.resolve(placements)
+            for (placement in placements) {
+                val (position, stack, _, doorMetadata) = placement
                 val item = stack.item as? ItemBlock ?: continue
                 val (x, y, z) = position
                 if (!world.blockExists(
@@ -166,7 +170,12 @@ internal object BlueprintWorldUse {
                 } else {
                     stack
                 }
-                val icons = Array(ForgeDirection.VALID_DIRECTIONS.size) {
+                val hatchIcons = if (gregTech) {
+                    HatchHintIcons.resolve(placement)
+                } else {
+                    null
+                }
+                val icons = doorIcons[position] ?: hatchIcons ?: Array(ForgeDirection.VALID_DIRECTIONS.size) {
                     block.getIcon(
                         it,
                         doorMetadata ?: item.getMetadata(stack.itemDamage),

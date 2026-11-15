@@ -8,6 +8,7 @@ import ic2.core.block.BlockIC2Door
 import ic2.core.init.InternalName
 import ic2.core.item.block.ItemIC2Door
 import java.util.function.BooleanSupplier
+import net.minecraft.client.renderer.texture.TextureAtlasSprite
 import net.minecraft.init.Blocks
 import net.minecraft.init.Items
 import net.minecraft.item.ItemStack
@@ -24,6 +25,8 @@ import space.impact.iblueprints.integration.gregtech.GregTechScenes
 import space.impact.iblueprints.integration.structures.BlueprintPlacement
 import space.impact.iblueprints.integration.structures.BlueprintPlacementResult
 import space.impact.iblueprints.integration.structures.BlueprintWorldUse
+import space.impact.iblueprints.integration.structures.DoorHintFace
+import space.impact.iblueprints.integration.structures.DoorHintIcons
 import space.impact.iblueprints.integration.structures.PreviewPlayer
 import space.impact.iblueprints.integration.structures.SceneBlueprint
 import space.impact.iblueprints.item.BlankBlueprintItem
@@ -98,6 +101,11 @@ internal object BuiltStructureCaptureChecks {
         assertEquals(
             listOf(9, 6),
             rotated.map(BlueprintPlacement::doorMetadata),
+        )
+        checkDoorHologram(
+            block = block,
+            restored = restored,
+            rotated = rotated,
         )
         BlockScene("Door").use { scene ->
             for (placement in restored) {
@@ -194,6 +202,66 @@ internal object BuiltStructureCaptureChecks {
                 facing = facing,
             ).map(BlueprintPlacement::doorMetadata),
         )
+    }
+
+    private fun checkDoorHologram(
+        block: BlockIC2Door,
+        restored: List<BlueprintPlacement>,
+        rotated: List<BlueprintPlacement>,
+    ) {
+        val top = object : TextureAtlasSprite("test:door_top") {}
+        val bottom = object : TextureAtlasSprite("test:door_bottom") {}
+        val textures = BlockIC2Door::class.java.getDeclaredField("textures")
+        textures.isAccessible = true
+        val oldTextures = textures.get(block)
+        textures.set(
+            block,
+            arrayOf(top, bottom),
+        )
+        try {
+            val faces = DoorHintIcons.resolve(restored)
+            val upperFaces = faces.getValue(restored[0].position)
+            val lowerFaces = faces.getValue(restored[1].position)
+            assertEquals(
+                null,
+                upperFaces[ForgeDirection.DOWN.ordinal],
+            )
+            assertEquals(
+                null,
+                lowerFaces[ForgeDirection.UP.ordinal],
+            )
+            val upperFace = upperFaces[ForgeDirection.WEST.ordinal] as DoorHintFace
+            val lowerFace = lowerFaces[ForgeDirection.WEST.ordinal] as DoorHintFace
+            assertSame(
+                top,
+                upperFace.sprite(),
+            )
+            assertSame(
+                bottom,
+                lowerFace.sprite(),
+            )
+            assertEquals(
+                0.1875,
+                upperFace.bounds.maxX,
+                0.0,
+            )
+            assertEquals(
+                upperFace.bounds.toString(),
+                lowerFace.bounds.toString(),
+            )
+            val rotatedFace = DoorHintIcons.resolve(rotated)
+                .getValue(rotated[0].position)[ForgeDirection.NORTH.ordinal] as DoorHintFace
+            assertEquals(
+                0.1875,
+                rotatedFace.bounds.maxZ,
+                0.0,
+            )
+        } finally {
+            textures.set(
+                block,
+                oldTextures,
+            )
+        }
     }
 
     internal fun checkLayout(scene: BlockScene) {

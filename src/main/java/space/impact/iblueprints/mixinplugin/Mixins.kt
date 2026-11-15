@@ -28,6 +28,18 @@ public enum class Mixins(private val mixinBuilder: MixinBuilder) : IMixins {
                 true
             },
     ),
+    BLUEPRINT_HOLOGRAM_RENDERING(
+        MixinBuilder("Render door geometry and GregTech hatch texture layers in blueprint holograms")
+            .setPhase(Phase.LATE)
+            .addRequiredMod(TargetedMod.IMPACT_API)
+            .addClientMixins(
+                "structures.HintClientProxyInvoker",
+                "structures.HintParticleMixin",
+            )
+            .setApplyIf {
+                true
+            },
+    ),
     BLUEPRINT_INTERFACE_TERMINAL(
         MixinBuilder("Allow structure patterns through the interface terminal item check")
             .setPhase(Phase.LATE)
