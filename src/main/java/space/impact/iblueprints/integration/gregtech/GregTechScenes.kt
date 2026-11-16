@@ -341,6 +341,15 @@ internal object GregTechScenes {
     ) {
         for (placement in placements) {
             val (position, stack, direction) = placement
+            if (placement.fluidBlock != null) {
+                scene.block(
+                    position = position,
+                    block = placement.fluidBlock,
+                    metadata = placement.fluidMetadata,
+                )
+                continue
+            }
+            requireNotNull(stack)
             val item = stack.item as? ItemBlock ?: error("Blueprint contains a non-block item")
             val block = Block.getBlockFromItem(item)
             val prototype = if (block === GregTech_API.sBlockMachines) {

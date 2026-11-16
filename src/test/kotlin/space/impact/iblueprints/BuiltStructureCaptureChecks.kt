@@ -390,7 +390,7 @@ internal object BuiltStructureCaptureChecks {
                 placements.single { it.position == hatchPosition }.hatchTexture,
             )
             for ((position, stack, direction) in placements) {
-                assertTrue(stack.isItemEqual(scene.item(position)))
+                assertTrue(requireNotNull(stack).isItemEqual(scene.item(position)))
                 assertEquals(
                     BlueprintHatch.facing(world.getTileEntity(
                         x = position.x,

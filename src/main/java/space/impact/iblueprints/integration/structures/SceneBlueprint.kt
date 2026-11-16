@@ -12,10 +12,12 @@ import space.impact.iblueprints.item.StructureBlueprintItem.PLACEMENT_SIZE
 import space.impact.iblueprints.item.StructureBlueprintItem.PLAN_VERSION
 import space.impact.iblueprints.item.StructureBlueprintItem.PLAN_TAG
 import space.impact.iblueprints.scene.BlockScene
+import space.impact.iblueprints.scene.FluidMaterial
 import space.impact.iblueprints.scene.ScenePosition
 import space.impact.iblueprints.scene.SceneView
 import space.impact.structures.alignment.IAlignmentProvider
 import space.impact.structures.alignment.enumerable.ExtendedFacing
+import space.impact.structures.util.FluidUtility
 
 internal object SceneBlueprint {
 
@@ -46,9 +48,14 @@ internal object SceneBlueprint {
             } else {
                 null
             }
+            val fluidBlock = block.takeIf {
+                FluidUtility.getFluid(it) != null
+            }
             BlueprintPlacement(
                 position = position,
-                stack = if (doorMetadata != null) {
+                stack = if (fluidBlock != null) {
+                    null
+                } else if (doorMetadata != null) {
                     ItemStack(block)
                 } else {
                     scene.item(position) ?: return null
@@ -56,6 +63,16 @@ internal object SceneBlueprint {
                 hatchFacing = simulation.hatchFacing(position),
                 doorMetadata = doorMetadata,
                 hatchTexture = simulation.hatchTexture(position),
+                fluidBlock = fluidBlock,
+                fluidMetadata = if (fluidBlock != null) {
+                    scene.world.getBlockMetadata(
+                        x = x,
+                        y = y,
+                        z = z,
+                    )
+                } else {
+                    0
+                },
             )
         }
         return capture(
@@ -87,7 +104,20 @@ internal object SceneBlueprint {
         val offset = IntArray(3)
         for ((index, placement) in blocks.withIndex()) {
             val position = placement.position
-            val item = itemTag(placement.stack) ?: return null
+            val item = if (placement.fluidBlock != null) {
+                NBTTagCompound().apply {
+                    setString(
+                        "fluidBlock",
+                        GameData.getBlockRegistry().getNameForObject(placement.fluidBlock) ?: return null,
+                    )
+                    setInteger(
+                        "fluidMeta",
+                        placement.fluidMetadata,
+                    )
+                }
+            } else {
+                itemTag(placement.stack ?: return null) ?: return null
+            }
             placement.doorMetadata?.let {
                 item.setInteger(
                     "doorMeta",
@@ -275,7 +305,11 @@ internal object SceneBlueprint {
                 continue
             }
             val entry = entries[index]
-            val blockItem = stack(entry) ?: return null
+            val blockItem = if (entry.hasKey("fluidBlock")) {
+                FluidMaterial.stack(fluidBlock(entry) ?: return null) ?: return null
+            } else {
+                stack(entry) ?: return null
+            }
             if (BlueprintDoor.isReinforcedBlockItem(blockItem.item)) {
                 if (!entry.hasKey("doorMeta")) {
                     legacyDoorHalves += count
@@ -319,6 +353,18 @@ internal object SceneBlueprint {
             facing = facing,
         )) {
             val (position, item, side) = placement
+            val fluidBlock = placement.fluidBlock
+            if (fluidBlock != null) {
+                view.scene.block(
+                    position = position,
+                    block = fluidBlock,
+                    metadata = placement.fluidMetadata,
+                )
+                continue
+            }
+            if (item == null) {
+                continue
+            }
             val doorMetadata = placement.doorMetadata
             if (doorMetadata != null) {
                 view.scene.block(
@@ -369,8 +415,12 @@ internal object SceneBlueprint {
         val offset = IntArray(3)
         for (index in placements.indices step PLACEMENT_SIZE) {
             val paletteIndex = placements[index + 3]
-            val item = items.getOrNull(paletteIndex) ?: continue
-            val entry = entries[paletteIndex]
+            val entry = entries.getOrNull(paletteIndex) ?: continue
+            val item = items.getOrNull(paletteIndex)
+            val fluidBlock = fluidBlock(entry)
+            if (item == null && fluidBlock == null) {
+                continue
+            }
             facing.getWorldOffset(
                 intArrayOf(
                     placements[index],
@@ -406,6 +456,8 @@ internal object SceneBlueprint {
                     position = position,
                     stack = item,
                     hatchFacing = worldSide,
+                    fluidBlock = fluidBlock,
+                    fluidMetadata = entry.getInteger("fluidMeta"),
                     doorMetadata = if (entry.hasKey("doorMeta")) {
                         BlueprintDoor.rotate(
                             metadata = entry.getInteger("doorMeta"),
@@ -434,7 +486,7 @@ internal object SceneBlueprint {
         direction: ForgeDirection,
     ): List<BlueprintPlacement> {
         val legacy = placements.filter {
-            it.doorMetadata == null && BlueprintDoor.isReinforcedBlockItem(it.stack.item)
+            it.doorMetadata == null && it.stack != null && BlueprintDoor.isReinforcedBlockItem(it.stack.item)
         }.map(BlueprintPlacement::position).toSet()
         if (legacy.isEmpty()) {
             return placements
@@ -476,6 +528,9 @@ internal object SceneBlueprint {
     }
 
     private fun stack(tag: NBTTagCompound): ItemStack? {
+        if (tag.hasKey("fluidBlock")) {
+            return null
+        }
         val item = GameData.getItemRegistry().getObject(tag.getString("item")) ?: return null
         return ItemStack(
             item,
@@ -502,6 +557,12 @@ internal object SceneBlueprint {
         tag: NBTTagCompound,
         paletteEntry: Boolean = false,
     ): Boolean {
+        if (paletteEntry && tag.hasKey("fluidBlock")) {
+            return tag.func_150296_c().size == 2 && fluidBlock(tag) != null && tag.hasKey(
+                "fluidMeta",
+                NBT.TAG_INT,
+            ) && tag.getInteger("fluidMeta") in 0..15
+        }
         val name = tag.getString("item")
         val keyCount = if (paletteEntry && tag.hasKey("doorMeta")) {
             if (name != BlueprintDoor.BLOCK_NAME || !tag.hasKey(
@@ -529,6 +590,17 @@ internal object SceneBlueprint {
                 "damage",
                 NBT.TAG_INT,
             ) && tag.getInteger("damage") in 0..Short.MAX_VALUE
+    }
+
+    private fun fluidBlock(tag: NBTTagCompound): Block? {
+        val name = tag.getString("fluidBlock")
+        val registry = GameData.getBlockRegistry()
+        if (!registry.containsKey(name)) {
+            return null
+        }
+        return registry.getObject(name)?.takeIf {
+            FluidUtility.getFluid(it) != null
+        }
     }
 
     private fun localSide(

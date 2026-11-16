@@ -24,7 +24,7 @@ internal object DoorHintIcons {
                     x = position.x,
                     y = position.y,
                     z = position.z,
-                    block = Block.getBlockFromItem(stack.item),
+                    block = Block.getBlockFromItem(requireNotNull(stack).item),
                     meta = requireNotNull(metadata),
                     flags = 0,
                 )

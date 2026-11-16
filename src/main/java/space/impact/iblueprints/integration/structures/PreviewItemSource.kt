@@ -1,11 +1,19 @@
 package space.impact.iblueprints.integration.structures
 
 import net.minecraft.item.ItemStack
+import net.minecraftforge.fluids.FluidStack
 import space.impact.structures.structure.IItemSource
 import java.util.function.Predicate
 
 /** An unlimited scene-local supply. Never reads or consumes the player's inventory. */
 internal class PreviewItemSource(private val candidates: List<ItemStack>) : IItemSource {
+
+    override fun takeFluid(
+        fluid: FluidStack,
+        simulate: Boolean,
+    ): Boolean {
+        return fluid.amount > 0
+    }
 
     override fun take(
         predicate: Predicate<ItemStack>,

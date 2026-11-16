@@ -159,6 +159,7 @@ internal object GregTechSceneChecks {
         )
         checkWorldPlacement()
         checkRegisteredInventoryPlacement(serverPlayer)
+        BlueprintFluidChecks.run(serverPlayer)
         checkSceneTileCleanup()
         checkSceneTileCleanupFailures()
         checkPlannerTraceConfig()
@@ -1748,6 +1749,7 @@ internal object GregTechSceneChecks {
                     hatchFacing = nextFacing,
                 )
                 BuiltStructureCaptureChecks.run(rebuilt)
+                BlueprintFluidChecks.checkCapture(rebuilt)
             }
         }
     }
@@ -1838,7 +1840,7 @@ internal object GregTechSceneChecks {
                 it.position.y == controllerPosition.y + rotatedPosition[1] &&
                 it.position.z == controllerPosition.z + rotatedPosition[2]
         }
-        assertTrue(plannedHatch.stack.isItemEqual(scene.item(hatchPosition)))
+        assertTrue(requireNotNull(plannedHatch.stack).isItemEqual(scene.item(hatchPosition)))
         val targetFacing = requireNotNull(plannedHatch.hatchFacing)
         assertEquals(
             rotatedSide.toList(),

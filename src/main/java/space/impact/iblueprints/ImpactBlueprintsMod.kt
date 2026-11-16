@@ -25,7 +25,7 @@ import space.impact.iblueprints.proxy.CommonProxy
     acceptedMinecraftVersions = "[1.7.10]",
     acceptableRemoteVersions = "*",
     dependencies = "required-after:forgelin;" +
-        "after:NotEnoughItems;after:modularui2;after:impactapi;" +
+        "after:NotEnoughItems;after:modularui2;after:impactapi@[1.1.6,);" +
         "after:gregtech;after:impact;after:appliedenergistics2",
 )
 object ImpactBlueprintsMod {

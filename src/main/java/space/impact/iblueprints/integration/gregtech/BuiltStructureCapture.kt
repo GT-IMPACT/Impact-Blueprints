@@ -13,6 +13,7 @@ import space.impact.iblueprints.integration.structures.SceneBlueprint
 import space.impact.iblueprints.mixins.gregtech.IMultiblockSetupInvoker
 import space.impact.iblueprints.scene.ScenePosition
 import space.impact.structures.ImpactStructures
+import space.impact.structures.util.FluidUtility
 
 internal object BuiltStructureCapture {
 
@@ -89,7 +90,13 @@ internal object BuiltStructureCapture {
                 position.y,
                 position.z,
             )
-            val item = Item.getItemFromBlock(block) as? ItemBlock ?: return null
+            val fluidBlock = block.takeIf {
+                FluidUtility.getFluid(it) != null
+            }
+            val item = Item.getItemFromBlock(block) as? ItemBlock
+            if (item == null && fluidBlock == null) {
+                return null
+            }
             val placedTile = world.getTileEntity(
                 position.x,
                 position.y,
@@ -97,16 +104,20 @@ internal object BuiltStructureCapture {
             )
             blocks.add(BlueprintPlacement(
                 position = position,
-                stack = ItemStack(
-                    item,
-                    1,
-                    block.getDamageValue(
-                        world,
-                        position.x,
-                        position.y,
-                        position.z,
-                    ),
-                ),
+                stack = if (fluidBlock != null) {
+                    null
+                } else {
+                    ItemStack(
+                        item,
+                        1,
+                        block.getDamageValue(
+                            world,
+                            position.x,
+                            position.y,
+                            position.z,
+                        ),
+                    )
+                },
                 hatchFacing = BlueprintHatch.facing(placedTile),
                 doorMetadata = if (BlueprintDoor.isReinforced(block)) {
                     world.getBlockMetadata(
@@ -118,6 +129,16 @@ internal object BuiltStructureCapture {
                     null
                 },
                 hatchTexture = BlueprintHatch.texture(placedTile),
+                fluidBlock = fluidBlock,
+                fluidMetadata = if (fluidBlock != null) {
+                    world.getBlockMetadata(
+                        position.x,
+                        position.y,
+                        position.z,
+                    )
+                } else {
+                    0
+                },
             ))
         }
         return SceneBlueprint.capture(

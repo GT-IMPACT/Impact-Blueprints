@@ -89,6 +89,9 @@ public class BlockScene(public val title: String) : AutoCloseable {
         if (BlueprintDoor.isReinforced(block)) {
             return BlueprintDoor.material()
         }
+        FluidMaterial.stack(block)?.let {
+            return it
+        }
         val item = Item.getItemFromBlock(block) ?: return null
         val damage = block.getDamageValue(
             world,

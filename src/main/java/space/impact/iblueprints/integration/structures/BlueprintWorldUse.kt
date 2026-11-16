@@ -7,6 +7,7 @@ import cpw.mods.fml.common.eventhandler.SubscribeEvent
 import cpw.mods.fml.relauncher.Side
 import cpw.mods.fml.relauncher.SideOnly
 import java.util.WeakHashMap
+import java.util.function.Consumer
 import net.minecraft.block.Block
 import net.minecraft.client.Minecraft
 import net.minecraft.client.entity.EntityClientPlayerMP
@@ -24,12 +25,15 @@ import net.minecraftforge.common.util.BlockSnapshot
 import net.minecraftforge.common.util.FakePlayer
 import net.minecraftforge.common.util.ForgeDirection
 import net.minecraftforge.event.entity.player.PlayerInteractEvent
+import net.minecraftforge.fluids.FluidContainerRegistry
+import net.minecraftforge.fluids.FluidStack
 import space.impact.iblueprints.integration.gregtech.BlueprintHatch
 import space.impact.iblueprints.integration.gregtech.CopyBuiltStructure
 import space.impact.iblueprints.integration.gregtech.HatchHintIcons
 import space.impact.iblueprints.item.BlankBlueprintItem
 import space.impact.iblueprints.item.StructureBlueprintItem
 import space.impact.iblueprints.planner.logPlannerTrace
+import space.impact.iblueprints.scene.FluidMaterial
 import space.impact.iblueprints.scene.ScenePosition
 import space.impact.structures.ConfigurationHandler
 import space.impact.structures.ImpactStructures
@@ -37,6 +41,7 @@ import space.impact.structures.alignment.IAlignmentProvider
 import space.impact.structures.item.ItemConstructableTrigger
 import space.impact.structures.item.ItemDebugConstructableTrigger
 import space.impact.structures.structure.IItemSource
+import space.impact.structures.util.FluidUtility
 
 internal object BlueprintWorldUse {
 
@@ -154,7 +159,7 @@ internal object BlueprintWorldUse {
             val doorIcons = DoorHintIcons.resolve(placements)
             for (placement in placements) {
                 val (position, stack, _, doorMetadata) = placement
-                val item = stack.item as? ItemBlock ?: continue
+                val block = placement.block ?: continue
                 val (x, y, z) = position
                 if (!world.blockExists(
                         x,
@@ -164,9 +169,10 @@ internal object BlueprintWorldUse {
                 ) {
                     continue
                 }
-                val block = Block.getBlockFromItem(item)
                 val hintStack = if (doorMetadata != null) {
                     BlueprintDoor.material() ?: stack
+                } else if (placement.fluidBlock != null) {
+                    FluidMaterial.stack(block)
                 } else {
                     stack
                 }
@@ -178,7 +184,7 @@ internal object BlueprintWorldUse {
                 val icons = doorIcons[position] ?: hatchIcons ?: Array(ForgeDirection.VALID_DIRECTIONS.size) {
                     block.getIcon(
                         it,
-                        doorMetadata ?: item.getMetadata(stack.itemDamage),
+                        placement.metadata,
                     )
                 }
                 ImpactStructures.hintParticle(
@@ -220,7 +226,7 @@ internal object BlueprintWorldUse {
         }
         val gregTech = Loader.isModLoaded("gregtech")
         val failures = linkedMapOf<BlueprintPlacementResult, BlueprintPlacement>()
-        var missing: ItemStack? = null
+        var missing: Any? = null
         var built = 0
         var pending = 0
         val byPosition = placements.associateBy(BlueprintPlacement::position)
@@ -246,8 +252,13 @@ internal object BlueprintWorldUse {
             }
             val upperMetadata = upperDoor?.doorMetadata
             val hasDoorPair = upperDoor != null && upperMetadata != null &&
-                upperMetadata and BlueprintDoor.UPPER_HALF != 0 && upperDoor.stack.item === stack.item
-            val matches = if (doorMetadata == null) {
+                upperMetadata and BlueprintDoor.UPPER_HALF != 0 && upperDoor.stack?.item === stack?.item
+            val matches = if (placement.fluidBlock != null) {
+                matchesFluid(
+                    world = world,
+                    placement = placement,
+                )
+            } else if (doorMetadata == null && stack != null) {
                 matchesBlock(
                     world = world,
                     x = x,
@@ -325,22 +336,33 @@ internal object BlueprintWorldUse {
                 )
                 if (result == BlueprintPlacementResult.MISSING_ITEM && missing == null) {
                     missing = if (doorMetadata != null) {
-                        BlueprintDoor.material()
+                        BlueprintDoor.material()?.func_151000_E()
+                    } else if (placement.fluidBlock != null) {
+                        val fluid = FluidUtility.getFluid(placement.fluidBlock)
+                        fluid.getLocalizedName(FluidStack(
+                            fluid,
+                            FluidContainerRegistry.BUCKET_VOLUME,
+                        ))
                     } else {
-                        stack
+                        stack?.func_151000_E()
                     }
                 }
             }
         }
         val rejected = failures.entries.joinToString {
             val item = it.value.stack
-            "${it.key}=${Item.itemRegistry.getNameForObject(item.item)}:${item.itemDamage}@${it.value.position}"
+            val name = if (item != null) {
+                "${Item.itemRegistry.getNameForObject(item.item)}:${item.itemDamage}"
+            } else {
+                "${Block.blockRegistry.getNameForObject(it.value.fluidBlock)}:${it.value.fluidMetadata}"
+            }
+            "${it.key}=$name@${it.value.position}"
         }
         logPlannerTrace("world.build placed=$built remaining=$pending creative=$creative rejected=[$rejected]")
         if (built == 0 && missing != null) {
             player.addChatMessage(ChatComponentTranslation(
                 "impactapi.autoplace.missing_block",
-                missing.func_151000_E(),
+                missing,
             ))
         }
         player.addChatMessage(
@@ -461,7 +483,7 @@ internal object BlueprintWorldUse {
             x,
             y,
             z,
-        ) === Block.getBlockFromItem(placement.stack.item) && world.getBlockMetadata(
+        ) === placement.block && world.getBlockMetadata(
             x,
             y,
             z,
@@ -476,8 +498,28 @@ internal object BlueprintWorldUse {
     ): BlueprintPlacementResult {
         val (position, stack) = placement
         val (x, y, z) = position
-        if (stack.item !is ItemBlock) {
+        if (placement.fluidBlock != null) {
+            return placeFluid(
+                placement = placement,
+                world = world,
+                player = player,
+                source = source,
+            )
+        }
+        if (stack?.item !is ItemBlock) {
             return BlueprintPlacementResult.UNSUPPORTED_ITEM
+        }
+        val block = Block.getBlockFromItem(stack.item)
+        if (FluidUtility.getFluid(block) != null) {
+            return placeFluid(
+                placement = placement.copy(
+                    fluidBlock = block,
+                    fluidMetadata = placement.metadata,
+                ),
+                world = world,
+                player = player,
+                source = source,
+            )
         }
         placementObstruction(
             world = world,
@@ -538,6 +580,99 @@ internal object BlueprintWorldUse {
             )
         }
         return result
+    }
+
+    private fun matchesFluid(
+        world: World,
+        placement: BlueprintPlacement,
+    ): Boolean {
+        val (x, y, z) = placement.position
+        return world.getBlock(
+            x,
+            y,
+            z,
+        ) === placement.fluidBlock && world.getBlockMetadata(
+            x,
+            y,
+            z,
+        ) == placement.fluidMetadata
+    }
+
+    private fun placeFluid(
+        placement: BlueprintPlacement,
+        world: World,
+        player: EntityPlayer,
+        source: IItemSource?,
+    ): BlueprintPlacementResult {
+        val block = placement.fluidBlock ?: return BlueprintPlacementResult.UNSUPPORTED_ITEM
+        val fluid = FluidUtility.getFluid(block) ?: return BlueprintPlacementResult.UNSUPPORTED_ITEM
+        placementObstruction(
+            world = world,
+            player = player,
+            position = placement.position,
+        )?.let {
+            return it
+        }
+        val request = FluidStack(
+            fluid,
+            FluidContainerRegistry.BUCKET_VOLUME,
+        )
+        val returnContainer = Consumer<ItemStack> { container ->
+            if (!player.inventory.addItemStackToInventory(container)) {
+                player.dropPlayerItemWithRandomChoice(
+                    container,
+                    false,
+                )
+            }
+        }
+        if (source != null && !FluidUtility.takeFluid(
+                source,
+                request,
+                true,
+                returnContainer,
+            )
+        ) {
+            return BlueprintPlacementResult.MISSING_ITEM
+        }
+        val (x, y, z) = placement.position
+        val previous = BlockSnapshot.getBlockSnapshot(
+            world,
+            x,
+            y,
+            z,
+        )
+        if (!world.setBlock(
+                x,
+                y,
+                z,
+                block,
+                placement.fluidMetadata,
+                2,
+            )
+        ) {
+            return BlueprintPlacementResult.REJECTED
+        }
+        if (source != null && !FluidUtility.takeFluid(
+                source,
+                request,
+                false,
+                returnContainer,
+            )
+        ) {
+            previous.restore(
+                true,
+                false,
+            )
+            return BlueprintPlacementResult.EXTRACTION_FAILED
+        }
+        world.notifyBlockChange(
+            x,
+            y,
+            z,
+            block,
+        )
+        player.inventoryContainer.detectAndSendChanges()
+        return BlueprintPlacementResult.PLACED
     }
 
     private fun placementObstruction(

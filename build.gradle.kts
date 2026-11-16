@@ -32,7 +32,7 @@ buildConfig {
 // RFG's native IDE launcher inherits runtimeClasspath, just like runClient.
 val integrationMods = listOf(
     "com.github.GTNewHorizons:NotEnoughItems:2.8.158-GTNH:dev",
-    "space.impact:ImpactStructures:1.1.3:dev",
+    "space.impact:ImpactStructures:1.1.6:dev",
     "space.impact:gregtech-impact:5.09.37.1:dev",
     "com.github.GTNewHorizons:ModularUI2:2.3.92-1.7.10:dev",
 )
@@ -84,7 +84,7 @@ dependencies {
         runtimeOnlyNonPublishable("com.github.GTNewHorizons:GTNHExtLib:1.0.5") { isTransitive = false }
         runtimeOnlyNonPublishable("io.github.legacymoddingmc:unimixins:0.3.1:dev") { isTransitive = false }
     }
-    testImplementation("space.impact:ImpactStructures:1.1.3:dev") { isTransitive = false }
+    testImplementation("space.impact:ImpactStructures:1.1.6:dev") { isTransitive = false }
     testImplementation("space.impact:gregtech-impact:5.09.37.1:dev") { isTransitive = false }
     testImplementation("com.github.GTNewHorizons:ModularUI2:2.3.92-1.7.10:dev") { isTransitive = false }
     testImplementation("com.github.GTNewHorizons:modularui:1.1.24:dev") { isTransitive = false }

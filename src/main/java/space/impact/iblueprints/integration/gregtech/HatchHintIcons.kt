@@ -14,7 +14,7 @@ import space.impact.iblueprints.scene.world.SceneWorld
 internal object HatchHintIcons {
 
     internal fun resolve(placement: BlueprintPlacement): Array<IIcon>? {
-        val stack = placement.stack
+        val stack = placement.stack ?: return null
         val prototype = GTStructureUtility.getMetaTileEntity(stack) as? GT_MetaTileEntity_Hatch ?: return null
         val block = GregTech_API.sBlockMachines
         val world = SceneWorld()
